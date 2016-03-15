@@ -1,0 +1,7 @@
+当debian与windows共存时就会出现时间不一致情况，为避免此问题，可以设置debian不使用UTC时间，即直接将BIOS时间作为系统时间，执行如下命令并重启系统即可：
+hwclock -w --localtime
+命令修改了/etc/adjtime文件，不建议手动修改此文件。
+ dpkg-reconfigure tzdata  或 ztselect
+ date -s '20160315 21:59"
+ hwclock -w
+ 
