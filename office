@@ -1,0 +1,6 @@
+outlook 2016 修改路径方法:
+stop outlook
+查看outlook mail's ost path, 
+copy ost to dst directory
+find a pdf, replace orig ost file
+start outlook, it will report "load data fail, please find the ost file path", then select  ost file in dst path, that's ok
