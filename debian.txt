@@ -1,7 +1,44 @@
-当debian与windows共存时就会出现时间不一致情况，为避免此问题，可以设置debian不使用UTC时间，即直接将BIOS时间作为系统时间，执行如下命令并重启系统即可：
+1. time
+   当debian与windows共存时就会出现时间不一致情况，为避免此问题，可以设置debian不使用UTC时间，即直接将BIOS时间作为系统时间，执行如下命令并重启系统即可：
 hwclock -w --localtime
 命令修改了/etc/adjtime文件，不建议手动修改此文件。
  dpkg-reconfigure tzdata  或 ztselect
  date -s '20160315 21:59"
  hwclock -w
  
+ 
+ 2. grub
+ sudo fdisk -l
+
+I have only one disk so that is /dev/sda and I learned that the Linux-formatted partition is /dev/sda4. That is what counts now. Then it is time to mount the necessary things:
+
+sudo mount /dev/sda4 /mnt
+sudo mount --bind /dev /mnt/dev
+sudo mount --bind /proc /mnt/proc
+sudo mount --bind /sys /mnt/sys
+
+Shaun did not mention the fourth line, which is necessary for the GRUB2 to re-find the boot entries. I found it by reading the error message :-) 
+Next let us chroot :
+
+sudo chroot /mnt
+
+From now on sudo is not necessary, I am the Root. Then it is time to reconfigure GRUB2:
+
+update-grub2
+
+The following lines indicate that all the necessary partitions are located by GRUB. The only thing left here is to write the GRUB to the MBR of my disk:
+
+grub-install /dev/sda
+
+That's it. Now leave the chroot environment:
+
+exit
+
+and reboot the system. The GRUB2 wakes up nicely and gives the first option as Debian as desired. If for some reason I wanted to change the boot order to, say, make the W7 be the default, I had to edit the GRUB2 configuration file. Once in chroot and updated GRUB, edit the configuration file with for example Nano:
+
+nano -w /etc/default/grub
+
+The same applies when modifying timeouts, defaults etc.later, too. The changes get written to the MBR by 
+
+grub-install /dev/sda
+
