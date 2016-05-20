@@ -2,6 +2,11 @@
 #   install an centos chroot system
 #   this command can run in centos/debian
 #   first,
+#   linux if meet "warning: rpmts_HdrFromFdno: Header V3 RSA/SHA256 Signature, key ID fd431d51: NOK ' problem
+#   1.  cd /etc/pki/rpm-gpg/ 
+#   2.  wget http://mirrors.163.com/centos/RPM-GPG-KEY-CentOS-6 
+#   3.  rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-6 
+#   
 CHROOT_DIR=/home/build/centos
 SCHROOT_NAME=c6
 SCHROOT_DESC='Centos 6 (amd64)'
