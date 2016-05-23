@@ -64,5 +64,5 @@ aliases=unstable,default
 EOF
 ) >> /etc/schroot/schroot.conf
 echo "if [ -f ~/.bashrc ]; then . ~/.bashrc; fi" > $CHROOT_DIR/root/.bash_profile
-echo 'PS1=\'\033[1;93;45m${debian_chroot:+($debian_chroot)}\033[0m\[\033[01;32m\]\u@\[\033[01;34m\]\w\[\033[00m\]\$ ' >> $CHROOT_DIR/root/.bashrc
+echo 'PS1=\'\033[1;93;45m${debian_chroot:+($debian_chroot)}\033[0m\[\033[01;32m\]\u@\[\033[01;34m\]\w\[\033[00m\]\$ \'' >> $CHROOT_DIR/root/.bashrc
 "
