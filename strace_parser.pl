@@ -8,10 +8,11 @@
 #   2.  merge process's all task trace output into single file and sort it
 #   3.  convert file handle to filename, and put it to "$ARGV[1]/fd"
 #   4.  use clean command to filter "$ARGV[1]/fd"'s all file, and output to "$ARGV[1]/fd/clear/"
+use Cwd;
 use strict;
 
 
-#   
+#
 #   configure
 #
 #   1.  only trace these process and it's child process
@@ -22,11 +23,11 @@ my  $config_pidfilenameprefix='aa.';
 #   3.  will merge one process's all tid trace file into single file, filename format:
 #       $config_outfilenameprefix<procname>
 my  $config_outfilenameprefix='bb.';
-my  $cleancmd=' egrep \'(send|recv|read|write|connect|bind|exec|fork|clone)\' | grep -vw tasks | grep -vw binder ';
+my  $cleancmd=q{ egrep '(sendto|send|recv|recvfrom|read|write|connect|bind|listen|accept|execve|fork|vfork|clone)\\(' | grep -vw tasks | grep -vw binder };
 
 
 
-#   
+#
 #   help
 #
 print "strace_parse.pl pstree_file aa_file_path\n";
@@ -42,7 +43,7 @@ my  $pids   = parsetree_exec($ARGV[0]);
 parsetree_dump($pids);
 my  @outfiles   = mergefile_exec($pids,$ARGV[1],$ARGV[1]);
 replacefd_exec( @outfiles);
-
+generate_summary("$ARGV[1]/fd/clear/");
 
 
 
@@ -71,8 +72,10 @@ sub replacefd_1file{
 
     my  $foutname   = $fname;
     $foutname       =~ s/(.*)(\\|\/)(.*?)\.txt$/\1\/fd\/\3\.txt/g;
+    my  $cleandir   = $fname;
+    $cleandir      =~ s/(.*)(\\|\/)(.*?)\.txt$/\1\/fd\/clear\//g;
     my  $cleanname  = $fname;
-    $cleanname      =~ s/(.*)(\\|\/)(.*?)\.txt$/\1\/fd\/clear\/\3\.txt/g;
+    $cleanname      =~ s/(.*)(\\|\/)(.*?)\.txt$/$cleandir\3\.txt/g;
 
     my  @fds;
     #   print   "$fname -> $foutname\n";
@@ -126,7 +129,7 @@ sub replacefd_1file{
                 my  $fd     = $3;
                 my  $name   = $2;
 
-                die "<$fname:$title>duplicate fd $fd, old name $fds[$fd] new name $name " if( $fds[$fd] );
+                print "<$fname:$title>duplicate fd $fd, old name $fds[$fd] new name $name " if( $fds[$fd] );
 
                 $fds[$fd]   = $name;
                 #print   "$func  - $fd - $name\n";
@@ -175,6 +178,53 @@ sub replacefd_1file{
 }
 
 
+sub generate_summary{
+    my  ($dir)  = @_;
+    my $curdir=getcwd();
+    chdir($dir);
+
+#   generate property_service time
+    unlink("property_service");
+    unlink("process.tmp");
+    unlink("index");
+
+    my $cmd=q{egrep 'sendto\([0-9]+<property_service>,' bb.* \
+    | sed -e 's/sendto([0-9]\+<property_service>, \"\\\\[0-9]\\\\0\\\\0\\\\0/    /' \
+    | sed -e 's/\\\\0/ /g'| sed -e 's/\".*//' \
+    | sed -e 's/^bb\.\(.*\)\.txt:\([0-9]\+:[0-9]\+:[0-9]\+\.[0-9]\+\) <\([0-9]\+\).*>:/\2 \1:\3    /' | sort > property_service};
+    print "$cmd\n";
+    qx($cmd);
+
+    #   generate process execve/bind/listen/accept time
+    $cmd=q{egrep -w 'vfork|fork|clone' bb.* | grep -v '|CLONE_THREAD|' \
+    | sed -e 's/^bb\.\(.*\)\.txt:\([0-9]\+:[0-9]\+:[0-9]\+.[0-9]\+\) <\([0-9]\+\).*>: \([a-z]\+\).*= \([0-9]\+\)/\2 \1:\3  \4  = \5/' > process.tmp};
+    print "$cmd\n";
+    qx($cmd);
+    $cmd=q{egrep -w 'listen|accept' bb.* \
+    | sed -e 's/^bb\.\(.*\)\.txt:\([0-9]\+:[0-9]\+:[0-9]\+.[0-9]\+\) <\([0-9]\+\).*>: \([a-z]\+\)(\([0-9]\+\), .*= \([0-9]\+\)/\2 \1:\3  \4   \5/' >> process.tmp};
+    print "$cmd\n";
+    qx($cmd);
+    $cmd=q{egrep -w 'bind' bb.* | sed -e 's/bind(\([0-9]\+\), /bind \1 /'  \
+    | sed -e 's/\{sa_family=AF_INET6, sin6_port=htons(\([0-9]\+\)),.* = \([0-9]\+\)/ INET6 \1/' \
+    | sed -e 's/\{sa_family=.*\"\(.*\)\".* = \([0-9]\+\)/\1/' \
+    | sed -e 's/\{sa_family=AF_NETLINK, pid=\([0-9]\+\), groups=\([0-9a-zA-Z]\+\).* = \([0-9]\+\)/ NETLINK \1,\2/g' \
+    | sed -e 's/^bb\.\(.*\)\.txt:\([0-9]\+:[0-9]\+:[0-9]\+.[0-9]\+\) <\([0-9]\+\).*>:/\2 \1:\3 /' >> process.tmp};
+    print "$cmd\n";
+    qx($cmd);
+
+    $cmd=q{egrep -w execve bb.*  \
+    | sed -e 's/ execve(\"\([^"]\+\)\".*/    EXEC \1/' \
+    | sed -e 's/^bb\.\(.*\)\.txt:\([0-9]\+:[0-9]\+:[0-9]\+.[0-9]\+\) <\([0-9]\+\).*>:/\2 \1:\3/' >> process.tmp};
+    print "$cmd\n";
+    qx($cmd);
+    $cmd=q{cat property_service process.tmp \
+    | sort  |awk ' { printf "%s\\t%-20s\\t%-10s\\t%s\\t%s\\t%s\\t%s\\t%s\\n",$1,$2,$3,$4,$5,$6,$7,$8}' > index };
+    print "$cmd\n";
+    qx($cmd);
+    unlink("process.tmp");
+    chdir ($curdir);
+}
+
 
 
 
@@ -212,7 +262,7 @@ sub mergefile_1proc{
 
     my  $outfname   = "${outdir}/${config_outfilenameprefix}${name}.txt";
     open (my $fout,'>',$outfname) or die "open file <$outfname> fail\n";
-    
+
     my  $i      = 0;
     my  @pids   = @$pidref;
     my  $pid    = shift @pids;
@@ -223,7 +273,7 @@ sub mergefile_1proc{
         mergefile_1tsk($pid,$i,$indir,$fout);
         $i++;
     }
-    
+
     close $fout;
     rename($outfname,"${outfname}.tmp");
     system ("cat \"${outfname}.tmp\" | sort > \"$outfname\" ; rm -f \"${outfname}.tmp\" ");
@@ -371,7 +421,7 @@ sub parsetree_exec{
     foreach my $pidinfo (@res) {
 
         if( $keyword ){
-            if( $pidinfo->{lineno} != $start_line 
+            if( $pidinfo->{lineno} != $start_line
                 && $pidinfo->{level} <= $start_level ){
                 undef $keyword;
             }
@@ -444,7 +494,7 @@ sub parsetree_exec{
         }
 
 
-        #   如果不是第一行，再判断是否是另一个关键字的开始
+        #   ▒▒▒▒ǵ▒һ▒У▒▒▒▒ж▒▒Ƿ▒▒▒▒▒һ▒▒ؼ▒▒ֵĿ▒ʼ
         if( !$firstfind ){
             my  $firstpart  = substr($line,0,$keyword_treepos);
             if( $firstpart =~ m/\w/ ){
@@ -476,8 +526,8 @@ sub parsetree_exec{
 
         if( $firstfind ){
             $keyword_treepos    = index($line,'+');
-            undef $subkeyword_name;    
-            $subkeyword_treepos = 0;    
+            undef $subkeyword_name;
+            $subkeyword_treepos = 0;
 
             if( $keyword_mode == 1 ){
                 my  $subword    = 0;
@@ -580,4 +630,5 @@ sub parsetree_exec{
 =cut
     return \%procpidinfo;
 }
+
 
