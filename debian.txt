@@ -1,3 +1,29 @@
+debootstrap sid /mnt/root/ http://mirrors.163.com/debian
+
+cd /mnt/root/
+mount --rbind /proc proc
+mount --rbind /sys sys
+mount --rbind /dev dev
+
+chroot .
+apt-get update
+apt-get install locales
+dpkg-reconfigure tzdata locales
+apt-get install ssh
+apt-get install linux-kernel-images-amd64 grub-pc
+vi /etc/fstab
+vi /etc/resolv.conf
+vi /etc/network/interfaces
+vi /etc/envirienment
+
+passwd
+vi /boot/grub/grub.cfg
+  # add net.ifnames=0 to makesure eth0 exist
+        linux   /boot/vmlinuz-4.5.0-2-amd64 root=UUID=8706990a-3eab-4f71-b8e3-2383de8295dd ro net.ifnames=0 quiet
+
+
+
+
 1. time
    当debian与windows共存时就会出现时间不一致情况，为避免此问题，可以设置debian不使用UTC时间，即直接将BIOS时间作为系统时间，执行如下命令并重启系统即可：
 hwclock -w --localtime
@@ -7,8 +33,10 @@ hwclock -w --localtime
  hwclock -w
  
  
+ 
  2. grub
  sudo fdisk -l
+        linux   /boot/vmlinuz-4.5.0-2-amd64 root=UUID=8706990a-3eab-4f71-b8e3-2383de8295dd ro net.ifnames=0 quiet
 
 I have only one disk so that is /dev/sda and I learned that the Linux-formatted partition is /dev/sda4. That is what counts now. Then it is time to mount the necessary things:
 
