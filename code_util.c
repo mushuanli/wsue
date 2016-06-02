@@ -17,8 +17,15 @@
 #include <stdlib.h>
 #include <pthread.h>
 
+#ifdef ANDROID
+#include <unwind.h>
+#else
+#include <execinfo.h>
+
 #ifdef __cplusplus
 #include <cxxabi.h>
+#endif
+
 #endif
 
 #define RAINLILOG_FILENAME    "rainli.log"
@@ -50,15 +57,48 @@ static void rainlog2file(const char *fmt,...)
     }
 }
 
+
+#ifdef ANDROID
+struct BacktraceState
+{
+    void** current;
+    void** end;
+};
+
+static _Unwind_Reason_Code unwindCallback(struct _Unwind_Context* context, void* arg)
+{
+    BacktraceState* state = static_cast<BacktraceState*>(arg);
+    uintptr_t pc = _Unwind_GetIP(context);
+    if (pc) {
+        if (state->current == state->end) {
+            return _URC_END_OF_STACK;
+        } else {
+            *state->current++ = reinterpret_cast<void*>(pc);
+        }
+    }
+    return _URC_NO_REASON;
+}
+
+
+
+size_t captureBacktrace(void** buffer, size_t max)
+{
+    BacktraceState state = {buffer, buffer + max};
+    _Unwind_Backtrace(unwindCallback, &state);
+
+    return state.current - buffer;
+}
+
+#endif
+
 static void Backtrace(const char *fmt,...)
 {
-    int skip            = 1;
     void *callstack[128];
     const int nMaxFrames = sizeof(callstack) / sizeof(callstack[0]);
-    int nFrames         = backtrace(callstack, nMaxFrames);
-    char **symbols      = backtrace_symbols(callstack, nFrames);
     va_list arg_ptr;
-    int i = skip;
+    int i = 1;          //  up one call level
+    int nFrames;
+    char **symbols  = NULL;
 
     int fd = openat(AT_FDCWD, RAINLILOG_FILENAME, O_CREAT|O_APPEND| O_WRONLY,0666);
     if( fd == -1 ){
@@ -70,34 +110,52 @@ static void Backtrace(const char *fmt,...)
     va_end(arg_ptr);
 
     dprintf(fd,"backtrace:\n");
+#ifdef ANDROID
+    nFrames         = captureBacktrace(callstack, nMaxFrames);
+#else
+    nFrames         = backtrace(callstack, nMaxFrames);
+    symbols         = backtrace_symbols(callstack, nFrames);
+#endif
 
     for (; i < nFrames; i++) {
-#if 0       //  simple mode,only print address
-        dprintf(fd,"\t<%s>\t", symbols[i]);
-#else       //  complex mode, try to resolve address name,need -ldl link option
-    Dl_info info;
+        /*  simple mode,only print address
+            dprintf(fd,"\t<%s>\t", symbols[i]);
+            */
+        //  complex mode, try to resolve address name,need -ldl link option
+        Dl_info info;
+        char *demangled     = NULL;
+        int status          = -1;
+        const char* symbol  = symbols ? symbols[i] : NULL;
 
-        if (dladdr(callstack[i], &info) && info.dli_sname) {
-            char *demangled = NULL;
-            int status = -1;
-#ifdef __cplusplus
-            if (info.dli_sname[0] == '_')
-                demangled = abi::__cxa_demangle(info.dli_sname, NULL, 0, &status);
-#endif
-            dprintf(fd, "%-3d %*p %s + %zd\n",
-                    i, (int)(2 + sizeof(void*) * 2), callstack[i],
-                    status == 0 ? demangled :
-                    info.dli_sname == 0 ? symbols[i] : info.dli_sname,
-                    (char *)callstack[i] - (char *)info.dli_saddr);
-            if( demangled )
-                free(demangled);
-#endif
-        } else {
+        if (!dladdr(callstack[i], &info) || !info.dli_sname) 
+        {
             dprintf(fd, "%-3d %*p %s\n",
-                    i, (int)(2 + sizeof(void*) * 2), callstack[i], symbols[i]);
+                    i, (int)(2 + sizeof(void*) * 2), callstack[i], symbol);
+            continue;
         }
+
+        symbol      = info.dli_sname;
+#if ( defined __cplusplus)&& (!defined ANDROID)
+        if (info.dli_sname[0] == '_'){
+            demangled = abi::__cxa_demangle(info.dli_sname, NULL, 0, &status);
+            //  android version, __cxxabiv1::__cxa_demangle(info.dli_sname, NULL, 0, &status);
+            if( status == 0 ){
+                symbol  = demangled;
+            }
+        }
+#endif
+
+        dprintf(fd, "%-3d %*p %s + %zd\n",
+                i, (int)(2 + sizeof(void*) * 2), callstack[i],
+                symbol,
+                (char *)callstack[i] - (char *)info.dli_saddr);
+        if( demangled )
+            free(demangled);
     }
+
+#ifndef ANDROID
     free(symbols);
+#endif
     if (nFrames == nMaxFrames)
         dprintf(fd, "[truncated]\n");
     else
@@ -115,7 +173,7 @@ void trace(){
 #endif
 
 
-int tsk_create(void *(*start_routine) (void *), void *arg)
+int task_create(void *(*start_routine) (void *), void *arg)
 {
     pthread_t slave_tid;
     int ret = pthread_create(&slave_tid, NULL, start_routine, arg);
@@ -146,7 +204,8 @@ static inline int file_recreate(const char *fname)
 #include <string.h>  
 #include <poll.h>
 
-#define ERROR(text) error(1, errno, "%s", text)  
+#define ERROR   RAIN_DBGLOG
+#define INFO    RAIN_DBGLOG
 
 struct EventMask {  
     int        flag;  
@@ -191,16 +250,19 @@ struct EventMask event_masks[] = {
 #define INOTIFYAPI_WATCHFAIL            -11
 #define INOTIFYAPI_WAITFAIL             -12
 
+typedef int (*INOTIFY_CALLBACK)(const struct inotify_event *ev,void *param,int *stop);
+
 struct inotify_handle{
     int                     fd;
     int                     wd;
+    unsigned int            evmask;
     struct inotify_event    *ev;
     char                    cache[1024];
     int                     cachelen;
     int                     offset;
 };
 
-static int inotifyapi_init(struct inotify_handle *handle,const char *target,int mode)
+static int inotifyapi_init(struct inotify_handle *handle,const char *target,int evmask)
 {
     memset(handle,0,sizeof(*handle));
     handle->wd  = -1;
@@ -211,7 +273,7 @@ static int inotifyapi_init(struct inotify_handle *handle,const char *target,int 
         return INOTIFYAPI_INITFAIL;
     }
 
-    handle->wd = inotify_add_watch(handle->fd, target, mode);  
+    handle->wd = inotify_add_watch(handle->fd, target, evmask);  
     if( handle->wd == -1 ){
         RAIN_DBGLOG("inotify_add_watch %s fail, errno:%d\n",target, errno);
         close(handle->fd);
@@ -219,6 +281,7 @@ static int inotifyapi_init(struct inotify_handle *handle,const char *target,int 
         return INOTIFYAPI_WATCHFAIL;
     }
 
+    handle->evmask      = evmask;
     return 0;
 }
 
@@ -230,18 +293,40 @@ static void inotifyapi_release(struct inotify_handle *handle)
     handle->wd  = -1;
 }
 
-static int inotifyapi_readrec(struct inotify_handle *handle,int timeout_ms)
+int inotifyapi_wait(struct inotify_handle *handle,int timeout_ms,INOTIFY_CALLBACK callback,void *param)
 {
+    int isstop          = 0;
+    int ret             = 0;
+    struct timespec     ts_start, ts_end;
+    int     diff;
     handle->ev          = NULL;
-    while( 1 ){
+    while( isstop == 0 ){
         if( handle->offset + sizeof(struct inotify_event) > handle->cachelen ){
+            //  don't recaculate wait time
             struct pollfd pfd = { handle->fd, POLLIN, 0 };
-            int ret = poll(&pfd, 1, timeout_ms);
+            if( timeout_ms > 0 ){
+                clock_gettime(CLOCK_MONOTONIC,&ts_start);
+            }
+
+            ret = poll(&pfd, 1, timeout_ms);
             if( ret < 0 ){
+                ERROR("***** ERROR! inotifyapi_wait() poll fail:%d!",errno);
                 return INOTIFYAPI_WAITFAIL;
             }
             else if( ret == 0 ){
                 return INOTIFYAPI_TIMEOUT;
+            }
+
+            if( timeout_ms > 0 ){
+                clock_gettime(CLOCK_MONOTONIC,&ts_end);
+                diff    = (ts_end.tv_sec - ts_start.tv_sec) * 1000 + (ts_end.tv_nsec - ts_start.tv_nsec)/1000000;
+                if( diff > 0 ){
+                    timeout_ms  -= diff;
+                }
+                else if( diff < 0 ){
+                    INFO("***** WARNING! inotifyapi_wait() diff time err(end: %d,%d, start:%d,%d)!",
+                            ts_end.tv_sec,ts_end.tv_nsec,ts_start.tv_sec,ts_start.tv_nsec);
+                }
             }
 
             handle->offset          = 0;
@@ -252,21 +337,24 @@ static int inotifyapi_readrec(struct inotify_handle *handle,int timeout_ms)
                 if (errno == EINTR)
                     continue;
 
-                RAIN_DBGLOG("***** ERROR! inotifyapi_getrec() got a short event!");
+                ERROR("***** ERROR! inotifyapi_wait() got a short event!");
                 return INOTIFYAPI_SHORTREC;
             }
         }
 
-        if( handle->offset + sizeof(struct inotify_event) > handle->cachelen ){
-            return INOTIFYAPI_TIMEOUT;
-        }
-
-        handle->ev  = (struct inotify_event *)(handle->cache + handle->offset);
+        handle->ev      = (struct inotify_event *)(handle->cache + handle->offset);
         handle->offset  += sizeof(struct inotify_event) + handle->ev->len;
-        break;
+
+        if( handle->ev->mask & handle->evmask ){
+            ret     = 0;
+            isstop  = 1;
+            if( callback ){
+                ret = callback(handle->ev,param,&isstop);
+            }
+        }
     }
-    RAIN_DBGTRACE("get a rec:");
-    return 0;
+
+    return ret;
 }
 
 int main(int argc, char *argv[])  
@@ -274,7 +362,7 @@ int main(int argc, char *argv[])
     const char              *target  = (argc ==1) ? "." : argv[1];  
     struct inotify_handle   handle;
 
-    int ret = inotifyapi_init(&handle, target,  IN_DELETE | IN_DELETE_SELF /*IN_ALL_EVENTS */);
+    int ret = inotifyapi_init(&handle, target,  IN_CREATE /*IN_ALL_EVENTS */);
     if( ret < 0 ){
         RAIN_DBGLOG("monitor init fail, errno %d:%d\n",ret,errno);
         return 1;
@@ -282,7 +370,7 @@ int main(int argc, char *argv[])
 
     /* event:inotify_event -> name:char[event.len] */  
     while (1) {  
-        ret = inotifyapi_readrec(&handle,0xffff);
+        ret = inotifyapi_wait(&handle,10,NULL,NULL);
         if( ret < 0 ){
             if( ret == INOTIFYAPI_TIMEOUT )
                 continue;
@@ -298,7 +386,6 @@ int main(int argc, char *argv[])
 
         printf("<%s:%d/0x%08x>:\n",event->name,event->len, event->mask);
 
-        /* 閺勫墽銇歟vent閻ㄥ埓ask閻ㄥ嫬鎯堟稊?*/  
         for (int i=0; i<sizeof(event_masks)/sizeof(struct EventMask); ++i) {  
             if (event->mask & event_masks[i].flag) {  
                 printf("\t%s\n", event_masks[i].name);  
@@ -309,3 +396,124 @@ int main(int argc, char *argv[])
     inotifyapi_release(&handle);
     return 0;  
 }
+
+
+
+
+
+
+/*------------------------------------------------------------------------------------------------------------------
+ *
+ *  LIST EARASE SAMPLE:   use remove_if
+ *
+ * ---------------------------------------------------------------------------------------------------------------*/
+#ifdef __cplusplus
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include <list>
+#include <functional>
+#include <algorithm>
+
+struct SockManagerInfo{
+    int sd;
+};
+
+typedef void (*DELAY_ACK_CALLBACK)(SockManagerInfo *info,void *param);
+
+class NetworkAckCache{
+    struct DelayAckItem{
+	SockManagerInfo         *info;
+	DELAY_ACK_CALLBACK      callback;
+	uint8_t*                data;
+	int                     datalen;
+    };
+
+    struct remove_a_match : public std::unary_function<DelayAckItem &, bool>
+    {
+	remove_a_match(const SockManagerInfo *val) : val_(val) {};
+	bool operator()(DelayAckItem &victim) const {
+            if( victim.info == val_ ){
+                printf("will erease item:%p %s[%d]\n",victim.info,(char *)victim.data,victim.datalen);
+                delete[] victim.data;
+                victim.data    = NULL;
+                return true;
+            }
+            else{
+                printf("skip item:%p %s[%d]\n",victim.info,(char *)victim.data,victim.datalen);
+                return false;
+            }
+        }
+	private:
+	const SockManagerInfo *val_;
+    };
+
+
+    std::list<DelayAckItem>      items_list;
+    public:
+    ~NetworkAckCache(){
+	for( std::list<DelayAckItem>::iterator iter = items_list.begin();
+		iter != items_list.end(); iter ++ ){
+	    delete[] iter->data;
+	    iter->data = NULL;
+	}
+    }
+
+    bool push(SockManagerInfo *info,DELAY_ACK_CALLBACK callback,const uint8_t*data, int datalen){
+        DelayAckItem    item    = {info,callback,NULL,datalen};
+        if( datalen > 0 ){
+            item.data              = new uint8_t[datalen];
+            if( !item.data )
+                return false;
+
+            memcpy(item.data,data,datalen);
+        }
+
+        items_list.push_back(item);
+        return true;
+    }
+
+    bool clear(SockManagerInfo *info){
+	items_list.erase(std::remove_if(items_list.begin(), items_list.end(), remove_a_match(info) ),items_list.end());
+    }
+
+    void dump(){
+        int i   = 0;
+        for( std::list<DelayAckItem>::iterator iter = items_list.begin();
+                iter != items_list.end(); iter ++,i++ ){
+            printf("%d:\t%p %s[%d]\n",i,iter->info,iter->data,iter->datalen);
+        }
+    }
+};
+
+int main()
+{
+    SockManagerInfo a[10];
+    NetworkAckCache cache;
+    for( int i = 0; i < 10; i ++ ){
+        char    buf[20];
+        sprintf(buf,"it_is %d",i);
+        cache.push(a+i,NULL,(uint8_t *)buf,20);
+    }
+
+    cache.clear(a+1);
+    printf("=================   after clear 1,ret:\n");
+    cache.dump();
+
+    cache.clear(a+0);
+    printf("=================   after clear 0,ret:\n");
+    cache.dump();
+
+    cache.clear(a+5);
+    printf("=================   after clear 5,ret:\n");
+    cache.dump();
+
+    cache.clear(a+9);
+    printf("=================   after clear 9,ret:\n");
+    cache.dump();
+
+    return 0;
+}
+#endif
