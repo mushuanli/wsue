@@ -12,7 +12,7 @@ use Cwd;
 use strict;
 
 
-#
+#   
 #   configure
 #
 #   1.  only trace these process and it's child process
@@ -26,24 +26,25 @@ my  $config_outfilenameprefix='bb.';
 my  $cleancmd=q{ egrep '(sendto|send|recv|recvfrom|read|write|connect|bind|listen|accept|execve|fork|vfork|clone)\\(' | grep -vw tasks | grep -vw binder };
 
 
-
-#
+my $pstreefile  = $ARGV[0] || 'tree';
+my $stracedir   = $ARGV[1] || '.';
+#   
 #   help
 #
 print "strace_parse.pl pstree_file aa_file_path\n";
 print "\tuse to parse this command:\n";
 print "\t\t".'(/opt/bin/sniff -i eth0 -F \'TCP{PORT!389}\' -w 050413.cap  &); strace -s 300 -f -ff -o aa -tt  -p \"`pidof libvirtd`\";pkill -SIGINT sniff ; pstree -p >tree'."\n";
 
-die "aa_file_path not found \n" if (! -d $ARGV[1]);
-mkdir "$ARGV[1]/fd";            #   fd convert dir
-mkdir "$ARGV[1]/fd/clear/";     #   clean dir
+die "aa_file_path not found \n" if (! -d $stracedir);
+mkdir "$stracedir/fd";            #   fd convert dir
+mkdir "$stracedir/fd/clear/";     #   clean dir
 
-my  $pids   = parsetree_exec($ARGV[0]);
+my  $pids   = parsetree_exec($pstreefile);
 
 parsetree_dump($pids);
-my  @outfiles   = mergefile_exec($pids,$ARGV[1],$ARGV[1]);
+my  @outfiles   = mergefile_exec($pids,$stracedir,$stracedir);
 replacefd_exec( @outfiles);
-generate_summary("$ARGV[1]/fd/clear/");
+generate_summary("$stracedir/fd/clear/");
 
 
 
@@ -182,7 +183,7 @@ sub generate_summary{
     my  ($dir)  = @_;
     my $curdir=getcwd();
     chdir($dir);
-
+    
 #   generate property_service time
     unlink("property_service");
     unlink("process.tmp");
@@ -191,30 +192,30 @@ sub generate_summary{
     my $cmd=q{egrep 'sendto\([0-9]+<property_service>,' bb.* \
     | sed -e 's/sendto([0-9]\+<property_service>, \"\\\\[0-9]\\\\0\\\\0\\\\0/    /' \
     | sed -e 's/\\\\0/ /g'| sed -e 's/\".*//' \
-    | sed -e 's/^bb\.\(.*\)\.txt:\([0-9]\+:[0-9]\+:[0-9]\+\.[0-9]\+\) <\([0-9]\+\).*>:/\2 \1:\3    /' | sort > property_service};
+    | sed -e 's/^bb\.\(.*\)_[0-9]\+\.txt:\([0-9]\+:[0-9]\+:[0-9]\+\.[0-9]\+\) <\([0-9]\+\).*>:/\2 \1:\3    /' | sort > property_service};
     print "$cmd\n";
     qx($cmd);
 
     #   generate process execve/bind/listen/accept time
     $cmd=q{egrep -w 'vfork|fork|clone' bb.* | grep -v '|CLONE_THREAD|' \
-    | sed -e 's/^bb\.\(.*\)\.txt:\([0-9]\+:[0-9]\+:[0-9]\+.[0-9]\+\) <\([0-9]\+\).*>: \([a-z]\+\).*= \([0-9]\+\)/\2 \1:\3  \4  = \5/' > process.tmp};
+    | sed -e 's/^bb\.\(.*\)_[0-9]\+\.txt:\([0-9]\+:[0-9]\+:[0-9]\+.[0-9]\+\) <\([0-9]\+\).*>: \([a-z]\+\).*= \([0-9]\+\)/\2 \1:\3  \4  = \5/' > process.tmp};
     print "$cmd\n";
     qx($cmd);
     $cmd=q{egrep -w 'listen|accept' bb.* \
-    | sed -e 's/^bb\.\(.*\)\.txt:\([0-9]\+:[0-9]\+:[0-9]\+.[0-9]\+\) <\([0-9]\+\).*>: \([a-z]\+\)(\([0-9]\+\), .*= \([0-9]\+\)/\2 \1:\3  \4   \5/' >> process.tmp};
+    | sed -e 's/^bb\.\(.*\)_[0-9]\+\.txt:\([0-9]\+:[0-9]\+:[0-9]\+.[0-9]\+\) <\([0-9]\+\).*>: \([a-z]\+\)(\([0-9]\+\), .*= \([0-9]\+\)/\2 \1:\3  \4   \5/' >> process.tmp};
     print "$cmd\n";
     qx($cmd);
     $cmd=q{egrep -w 'bind' bb.* | sed -e 's/bind(\([0-9]\+\), /bind \1 /'  \
     | sed -e 's/\{sa_family=AF_INET6, sin6_port=htons(\([0-9]\+\)),.* = \([0-9]\+\)/ INET6 \1/' \
     | sed -e 's/\{sa_family=.*\"\(.*\)\".* = \([0-9]\+\)/\1/' \
     | sed -e 's/\{sa_family=AF_NETLINK, pid=\([0-9]\+\), groups=\([0-9a-zA-Z]\+\).* = \([0-9]\+\)/ NETLINK \1,\2/g' \
-    | sed -e 's/^bb\.\(.*\)\.txt:\([0-9]\+:[0-9]\+:[0-9]\+.[0-9]\+\) <\([0-9]\+\).*>:/\2 \1:\3 /' >> process.tmp};
+    | sed -e 's/^bb\.\(.*\)_[0-9]\+\.txt:\([0-9]\+:[0-9]\+:[0-9]\+.[0-9]\+\) <\([0-9]\+\).*>:/\2 \1:\3 /' >> process.tmp};
     print "$cmd\n";
     qx($cmd);
-
+    
     $cmd=q{egrep -w execve bb.*  \
     | sed -e 's/ execve(\"\([^"]\+\)\".*/    EXEC \1/' \
-    | sed -e 's/^bb\.\(.*\)\.txt:\([0-9]\+:[0-9]\+:[0-9]\+.[0-9]\+\) <\([0-9]\+\).*>:/\2 \1:\3/' >> process.tmp};
+    | sed -e 's/^bb\.\(.*\)_[0-9]\+\.txt:\([0-9]\+:[0-9]\+:[0-9]\+.[0-9]\+\) <\([0-9]\+\).*>:/\2 \1:\3/' >> process.tmp};
     print "$cmd\n";
     qx($cmd);
     $cmd=q{cat property_service process.tmp \
@@ -262,7 +263,7 @@ sub mergefile_1proc{
 
     my  $outfname   = "${outdir}/${config_outfilenameprefix}${name}.txt";
     open (my $fout,'>',$outfname) or die "open file <$outfname> fail\n";
-
+    
     my  $i      = 0;
     my  @pids   = @$pidref;
     my  $pid    = shift @pids;
@@ -273,7 +274,7 @@ sub mergefile_1proc{
         mergefile_1tsk($pid,$i,$indir,$fout);
         $i++;
     }
-
+    
     close $fout;
     rename($outfname,"${outfname}.tmp");
     system ("cat \"${outfname}.tmp\" | sort > \"$outfname\" ; rm -f \"${outfname}.tmp\" ");
@@ -320,6 +321,7 @@ sub parsetree_analyselinepart{
         $part       = substr($line,$offset, $end-$offset);
     }
 
+    $part =~ s/(\w+)-(\w+)/\1_\2/g;
     my  @words  = split(/-+/,$part);
     my  $olditem;
 
@@ -402,11 +404,11 @@ sub parsetree_exec{
 
 
     my  @res;
-    my  @stack;
     my  $i  = 1;
 
+    my  @tmpstack;
     while(my $line = <$fh> ){
-        parsetree_analyseline($i++,$line,\@res,\@stack);
+        parsetree_analyseline($i++,$line,\@res,\@tmpstack);
     }
     close $fh;
 
@@ -414,221 +416,33 @@ sub parsetree_exec{
     my  $start_line         = 0;
     my  $start_level        = 0;
 
-    undef   @stack;
-    my      $ressz  = scalar(@res);
-    my      $lastitem;
+    undef   @tmpstack;
+    my  @namearray;
+    my  @keepstat;
+
 
     foreach my $pidinfo (@res) {
-
-        if( $keyword ){
-            if( $pidinfo->{lineno} != $start_line
-                && $pidinfo->{level} <= $start_level ){
-                undef $keyword;
-            }
-        }
-
-        if( !$keyword ){
-            next if( !($pidinfo->{name} ~~ @config_parentprocname) );
-            $keyword        = $pidinfo->{name};
-            $start_line     = $pidinfo->{lineno};
-            $start_level    = $pidinfo->{level};
-            $lastitem       = $pidinfo;
-            parsetree_pushpid(\%procpidinfo,$pidinfo->{name},$pidinfo);
-            next;
-        }
-
-
-
-
-        print "<$keyword:$start_level>$pidinfo->{lineno} - $pidinfo->{name} - $pidinfo->{pid} - $pidinfo->{level} \n";
         if( index($pidinfo->{name},'{') == 0 ){
-            while( $pidinfo->{level} <= $lastitem->{level} ){
-                $lastitem   = pop @stack;
-                print "1after pop, $pidinfo->{level} < $lastitem->{level},$lastitem->{name} \n";
+            $keyword    = $namearray[$pidinfo->{level} - 1];
+            parsetree_pushpid(\%procpidinfo,$keyword,$pidinfo) if($keepstat[$pidinfo->{level} - 1]);
+            next;
+        }
+
+        $keyword    = "$pidinfo->{name}_$pidinfo->{pid}";
+        if( $keyword ne $namearray[$pidinfo->{level}] ){
+            $namearray[$pidinfo->{level}]   = "$pidinfo->{name}_$pidinfo->{pid}";
+            if( -f "${config_pidfilenameprefix}$pidinfo->{pid}" ){
+                $keepstat[$pidinfo->{level}]    = 1;
             }
-
-            parsetree_pushpid(\%procpidinfo,$lastitem->{name},$pidinfo);
-            next;
+            else{
+                $keepstat[$pidinfo->{level}]    = 0;
+            }
         }
 
-
-        if( $pidinfo->{level} > $lastitem->{level} ){
-            #   if is child process, push
-            push @stack,$lastitem;
-            print "push $lastitem->{level},$lastitem->{name}\n";
-            $lastitem   = $pidinfo;
-
-            parsetree_pushpid(\%procpidinfo,$pidinfo->{name},$pidinfo);
-
-            next;
-        }
-
-        if( $pidinfo->{level} == $lastitem->{level} ){
-            $lastitem   = $pidinfo;
-            parsetree_pushpid(\%procpidinfo,$pidinfo->{name},$pidinfo);
-            next;
-        }
-
-        while( $pidinfo->{level} < $lastitem->{level} ){
-            $lastitem   = pop @stack;
-            print "2after pop, $pidinfo->{level} < $lastitem->{level},$lastitem->{name} \n";
-        }
-        $lastitem   = $pidinfo;
-        parsetree_pushpid(\%procpidinfo,$pidinfo->{name},$pidinfo);
+        print "parse line : $pidinfo->{level} - $pidinfo->{name} - $pidinfo->{pid} - $keepstat[$pidinfo->{level}] ${config_pidfilenameprefix}$pidinfo->{pid}\n";
+        parsetree_pushpid(\%procpidinfo,$keyword,$pidinfo) if($keepstat[$pidinfo->{level}]);
     }
 
-=item
-        my  $firstfind  = 0;
-
-        if( $keyword_mode == 0 ){
-            next if($keyword_mode == 0 && ($line !~m/(libvirt_lxc|libvirtd)/));
-
-            if( $1 eq 'libvirt_lxc' ){
-                $keyword_mode               = 1;
-            }
-            else{
-                $keyword_mode               = 2;
-            }
-
-            $firstfind  = 1;
-        }
-
-
-        #   ▒▒▒▒ǵ▒һ▒У▒▒▒▒ж▒▒Ƿ▒▒▒▒▒һ▒▒ؼ▒▒ֵĿ▒ʼ
-        if( !$firstfind ){
-            my  $firstpart  = substr($line,0,$keyword_treepos);
-            if( $firstpart =~ m/\w/ ){
-                if( $line =~ m/(libvirt_lxc|libvirtd)/ ){
-                    my  $match = $1;
-                    if( $keyword_mode == 2 && ($match eq 'libvirt_lxc') ){
-                        $keyword_mode           = 1;
-                        $firstfind              = 1;
-                    }
-                    else{
-                        if( $keyword_mode == 1 && ($match eq 'libvirtd') ){
-                            $keyword_mode       = 2;
-                            $firstfind          = 1;
-                        }
-                    }
-                }
-
-                if( !$firstfind){
-                    $keyword_mode   = 0;
-                    next;
-                }
-            }
-        }
-
-        my  $key;
-        my  @words  = split(/-+/,$line);
-        shift @words while( $words[0] !~ m/\(\d+\)/ );  #   skip not match line
-
-
-        if( $firstfind ){
-            $keyword_treepos    = index($line,'+');
-            undef $subkeyword_name;
-            $subkeyword_treepos = 0;
-
-            if( $keyword_mode == 1 ){
-                my  $subword    = 0;
-                foreach my $word (@words){
-                    if( $word eq '+' ){
-                        $subword    = 1;
-                        next;
-                    }
-
-                    next if( $word !~ m/(\{?.+\}?)\((\d+)\)/);
-                    if( $subword < 2 ){
-                        $key        = $1;
-                        $subword ++ if($subword == 1);
-                    }
-
-                    my  @oldarr;
-                    my  $pid        = $2;
-                    if($procpidinfo{$key}){
-                        @oldarr = @{$procpidinfo{$key}} ;
-                    }
-                    else{
-                        undef @oldarr;
-                    }
-                    push @oldarr,$pid;
-                    $procpidinfo{$key}  = \@oldarr;
-                    #print "$key - @oldarr\n";
-                }
-
-                $keyword_mode   = 0 if( $keyword_treepos <= 0 );
-                next;
-            }
-        }
-
-        if( $keyword_mode == 2 ){
-            my  @oldarr;
-            if($procpidinfo{libvirtd}){
-                @oldarr = @{$procpidinfo{libvirtd}} ;
-            }
-            else{
-                undef @oldarr;
-            }
-
-            foreach my $word (@words){
-                next if( $word !~ m/\{?.+\}?\((\d+)\)/);
-                push @oldarr,$1;
-            }
-            $procpidinfo{libvirtd}  = \@oldarr;
-
-            #print "libvirtd - @oldarr\n";
-
-            $keyword_mode   = 0 if( $keyword_treepos <= 0 );
-            next;
-        }
-
-        #   keyword_mode    == 1 && ! $firstfind
-        my  @oldarr;
-        undef $key;
-        next if($words[0] !~ m/(\{?.+\}?)\((\d+)\)/);
-        $key=$1;
-
-        if( $subkeyword_treepos <= 0 ){
-            $subkeyword_treepos         = index($line,'+');
-            $subkeyword_name            = $key;
-        }
-        else{
-            my  $firstpart                  = substr($line,0,$subkeyword_treepos);
-            if( $firstpart =~ m/\w/ ){
-                #print "-$subkeyword_treepos-$firstpart:$line";
-                $subkeyword_treepos         = index($line,'+');
-                if( $subkeyword_treepos > 0 ){
-                    $subkeyword_name    = $key;
-                }
-            }
-            else{
-                $key    = $subkeyword_name;
-            }
-        }
-
-        if($procpidinfo{$key}){
-            @oldarr = @{$procpidinfo{$key}} ;
-        }
-        else{
-            undef @oldarr;
-        }
-
-        foreach my $word (@words){
-            next if( $word !~ m/\{?.+\}?\((\d+)\)/);
-            push @oldarr,$1;
-        }
-
-        $procpidinfo{$key}  = \@oldarr;
-        #print "$key - @oldarr\n";
-
-        #print "word is<$keyword_mode>: @words\n";
-    }
-
-    close $fh;
-
-    #print %procpidinfo;
-=cut
     return \%procpidinfo;
 }
-
 
