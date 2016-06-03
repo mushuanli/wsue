@@ -30,28 +30,24 @@
 
 #define RAINLILOG_FILENAME    "rainli.log"
 
-#define RAIN_DBGLOG(fmt,arg...)     do{                                     \
-    struct timespec    now;    clock_gettime(CLOCK_REALTIME,&now);         \
-    struct tm day   = *localtime(&now.tv_sec);                              \
-    printf("%02d:%02d:%02d.%03d [%s:%d] "fmt,day.tm_hour,day.tm_min,day.tm_sec,now.tv_nsec/1000000,__func__,__LINE__,##arg);    \
-    rainlog2file("%02d:%02d:%02d.%03d [%s:%d] "fmt,day.tm_hour,day.tm_min,day.tm_sec,now.tv_nsec/1000000,__func__,__LINE__,##arg);    \
-}while(0)
+#define RAIN_DBGLOG(fmt,arg...)         RainLog("[%s:%d] "fmt,__func__,__LINE__,##arg)
+#define RAIN_DBGTRACE(fmt,arg...)       RainTrace("[%s:%d] "fmt,__func__,__LINE__,##arg)
 
-#define RAIN_DBGTRACE(fmt,arg...)   do{                                     \
-    struct timespec    now;    clock_gettime(CLOCK_REALTIME,&now);         \
-    struct tm day   = *localtime(&now.tv_sec);                              \
-    printf("%02d:%02d:%02d.%03d [%s:%d] "fmt,day.tm_hour,day.tm_min,day.tm_sec,now.tv_nsec/1000000,__func__,__LINE__,##arg);    \
-    Backtrace("%02d:%02d:%02d.%03d [%s:%d] "fmt,day.tm_hour,day.tm_min,day.tm_sec,now.tv_nsec/1000000,__func__,__LINE__,##arg);    \
-}while(0)
-
-static void rainlog2file(const char *fmt,...)
+static void RainLog(const char *fmt,...)
 {
     int fd = openat(AT_FDCWD, RAINLILOG_FILENAME, O_CREAT|O_APPEND| O_WRONLY,0666);
     if( fd != -1 ){
         va_list arg_ptr;
+
+        struct timespec    now;
+        struct tm day;
+
         va_start(arg_ptr, fmt);
+
+        day   = *localtime(&now.tv_sec);
+        clock_gettime(CLOCK_REALTIME,&now);
+        dprintf(fd,"%02d:%02d:%02d.%03d ",day.tm_hour,day.tm_min,day.tm_sec,now.tv_nsec/1000000);
         vdprintf(fd,fmt,arg_ptr);
-        //vprintf(fmt,arg_ptr);
         va_end(arg_ptr);
         close(fd);
     }
@@ -91,7 +87,7 @@ size_t captureBacktrace(void** buffer, size_t max)
 
 #endif
 
-static void Backtrace(const char *fmt,...)
+static void RainTrace(const char *fmt,...)
 {
     void *callstack[128];
     const int nMaxFrames = sizeof(callstack) / sizeof(callstack[0]);
@@ -99,14 +95,23 @@ static void Backtrace(const char *fmt,...)
     int i = 1;          //  up one call level
     int nFrames;
     char **symbols  = NULL;
+    struct timespec    now;
+    struct tm day;
 
     int fd = openat(AT_FDCWD, RAINLILOG_FILENAME, O_CREAT|O_APPEND| O_WRONLY,0666);
     if( fd == -1 ){
         return ;
-    }    
+    }
+    else{
+    }
 
     va_start(arg_ptr, fmt);
-    vdprintf(fd,fmt,arg_ptr);
+
+    day   = *localtime(&now.tv_sec);
+    clock_gettime(CLOCK_REALTIME,&now);
+
+    printf("%02d:%02d:%02d.%03d ",day.tm_hour,day.tm_min,day.tm_sec,now.tv_nsec/1000000);
+    vprintf(fmt,arg_ptr);
     va_end(arg_ptr);
 
     dprintf(fd,"backtrace:\n");
@@ -127,7 +132,7 @@ static void Backtrace(const char *fmt,...)
         int status          = -1;
         const char* symbol  = symbols ? symbols[i] : NULL;
 
-        if (!dladdr(callstack[i], &info) || !info.dli_sname) 
+        if (!dladdr(callstack[i], &info) || !info.dli_sname)
         {
             dprintf(fd, "%-3d %*p %s\n",
                     i, (int)(2 + sizeof(void*) * 2), callstack[i], symbol);
@@ -163,6 +168,21 @@ static void Backtrace(const char *fmt,...)
     close(fd);
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #ifdef __JAVA__
 void trace(){
     //Thread.currentThread().getStackTrace()
@@ -171,6 +191,19 @@ void trace(){
     String stackTrace = sw.toString();
 }
 #endif
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 int task_create(void *(*start_routine) (void *), void *arg)
@@ -196,55 +229,55 @@ static inline int file_recreate(const char *fname)
  *  INOTIFY EXAMPLE, provide inotifyapi_xxx
  *
  * ---------------------------------------------------------------------------------------------------------------*/
-#include <unistd.h>  
-#include <sys/inotify.h>  
-#include <stdio.h>  
-#include <error.h>  
-#include <errno.h>  
-#include <string.h>  
+#include <unistd.h>
+#include <sys/inotify.h>
+#include <stdio.h>
+#include <error.h>
+#include <errno.h>
+#include <string.h>
 #include <poll.h>
 
 #define ERROR   RAIN_DBGLOG
 #define INFO    RAIN_DBGLOG
 
-struct EventMask {  
-    int        flag;  
-    const char *name;  
+struct EventMask {
+    int        flag;
+    const char *name;
 
-};  
-struct EventMask event_masks[] = {  
-    {IN_ACCESS        , "IN_ACCESS"}        ,    
-    {IN_ATTRIB        , "IN_ATTRIB"}        ,    
-    {IN_CLOSE_WRITE   , "IN_CLOSE_WRITE"}   ,    
-    {IN_CLOSE_NOWRITE , "IN_CLOSE_NOWRITE"} ,    
-    {IN_CREATE        , "IN_CREATE"}        ,    
-    {IN_DELETE        , "IN_DELETE"}        ,    
-    {IN_DELETE_SELF   , "IN_DELETE_SELF"}   ,    
-    {IN_MODIFY        , "IN_MODIFY"}        ,    
-    {IN_MOVE_SELF     , "IN_MOVE_SELF"}     ,    
-    {IN_MOVED_FROM    , "IN_MOVED_FROM"}    ,    
-    {IN_MOVED_TO      , "IN_MOVED_TO"}      ,    
-    {IN_OPEN          , "IN_OPEN"}          ,    
+};
+struct EventMask event_masks[] = {
+    {IN_ACCESS        , "IN_ACCESS"}        ,
+    {IN_ATTRIB        , "IN_ATTRIB"}        ,
+    {IN_CLOSE_WRITE   , "IN_CLOSE_WRITE"}   ,
+    {IN_CLOSE_NOWRITE , "IN_CLOSE_NOWRITE"} ,
+    {IN_CREATE        , "IN_CREATE"}        ,
+    {IN_DELETE        , "IN_DELETE"}        ,
+    {IN_DELETE_SELF   , "IN_DELETE_SELF"}   ,
+    {IN_MODIFY        , "IN_MODIFY"}        ,
+    {IN_MOVE_SELF     , "IN_MOVE_SELF"}     ,
+    {IN_MOVED_FROM    , "IN_MOVED_FROM"}    ,
+    {IN_MOVED_TO      , "IN_MOVED_TO"}      ,
+    {IN_OPEN          , "IN_OPEN"}          ,
 
-    {IN_DONT_FOLLOW   , "IN_DONT_FOLLOW"}   ,    
-    {IN_EXCL_UNLINK   , "IN_EXCL_UNLINK"}   ,    
-    {IN_MASK_ADD      , "IN_MASK_ADD"}      ,    
-    {IN_ONESHOT       , "IN_ONESHOT"}       ,    
-    {IN_ONLYDIR       , "IN_ONLYDIR"}       ,    
+    {IN_DONT_FOLLOW   , "IN_DONT_FOLLOW"}   ,
+    {IN_EXCL_UNLINK   , "IN_EXCL_UNLINK"}   ,
+    {IN_MASK_ADD      , "IN_MASK_ADD"}      ,
+    {IN_ONESHOT       , "IN_ONESHOT"}       ,
+    {IN_ONLYDIR       , "IN_ONLYDIR"}       ,
 
-    {IN_IGNORED       , "IN_IGNORED"}       ,    
-    {IN_ISDIR         , "IN_ISDIR"}         ,    
-    {IN_Q_OVERFLOW    , "IN_Q_OVERFLOW"}    ,    
-    {IN_UNMOUNT       , "IN_UNMOUNT"}       ,    
-};  
+    {IN_IGNORED       , "IN_IGNORED"}       ,
+    {IN_ISDIR         , "IN_ISDIR"}         ,
+    {IN_Q_OVERFLOW    , "IN_Q_OVERFLOW"}    ,
+    {IN_UNMOUNT       , "IN_UNMOUNT"}       ,
+};
 
 
 
 
 
 #define INOTIFYAPI_SUCC                 0
-#define INOTIFYAPI_TIMEOUT              -1      
-#define INOTIFYAPI_SHORTREC             -2  
+#define INOTIFYAPI_TIMEOUT              -1
+#define INOTIFYAPI_SHORTREC             -2
 
 #define INOTIFYAPI_INITFAIL             -10
 #define INOTIFYAPI_WATCHFAIL            -11
@@ -273,7 +306,7 @@ static int inotifyapi_init(struct inotify_handle *handle,const char *target,int 
         return INOTIFYAPI_INITFAIL;
     }
 
-    handle->wd = inotify_add_watch(handle->fd, target, evmask);  
+    handle->wd = inotify_add_watch(handle->fd, target, evmask);
     if( handle->wd == -1 ){
         RAIN_DBGLOG("inotify_add_watch %s fail, errno:%d\n",target, errno);
         close(handle->fd);
@@ -357,9 +390,9 @@ int inotifyapi_wait(struct inotify_handle *handle,int timeout_ms,INOTIFY_CALLBAC
     return ret;
 }
 
-int main(int argc, char *argv[])  
-{  
-    const char              *target  = (argc ==1) ? "." : argv[1];  
+int main(int argc, char *argv[])
+{
+    const char              *target  = (argc ==1) ? "." : argv[1];
     struct inotify_handle   handle;
 
     int ret = inotifyapi_init(&handle, target,  IN_CREATE /*IN_ALL_EVENTS */);
@@ -368,8 +401,10 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    /* event:inotify_event -> name:char[event.len] */  
-    while (1) {  
+    RAIN_DBGTRACE("start\n");
+
+    /* event:inotify_event -> name:char[event.len] */
+    while (1) {
         ret = inotifyapi_wait(&handle,10,NULL,NULL);
         if( ret < 0 ){
             if( ret == INOTIFYAPI_TIMEOUT )
@@ -380,21 +415,21 @@ int main(int argc, char *argv[])
 
         struct inotify_event    *event = handle.ev;
 
-        if ( !event->len ) {  
-            sprintf(event->name, "FD: %d\n", event->wd);  
-        }  
+        if ( !event->len ) {
+            sprintf(event->name, "FD: %d\n", event->wd);
+        }
 
-        printf("<%s:%d/0x%08x>:\n",event->name,event->len, event->mask);
+        RAIN_DBGLOG("<%s:%d/0x%08x>:\n",event->name,event->len, event->mask);
 
-        for (int i=0; i<sizeof(event_masks)/sizeof(struct EventMask); ++i) {  
-            if (event->mask & event_masks[i].flag) {  
-                printf("\t%s\n", event_masks[i].name);  
-            }  
-        }  
-    }  
+        for (int i=0; i<sizeof(event_masks)/sizeof(struct EventMask); ++i) {
+            if (event->mask & event_masks[i].flag) {
+                printf("\t%s\n", event_masks[i].name);
+            }
+        }
+    }
 
     inotifyapi_release(&handle);
-    return 0;  
+    return 0;
 }
 
 
