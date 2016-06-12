@@ -32,6 +32,8 @@
 
 #define RAIN_DBGLOG(fmt,arg...)         RainLog("[%s:%d] "fmt,__func__,__LINE__,##arg)
 #define RAIN_DBGTRACE(fmt,arg...)       RainTrace("[%s:%d] "fmt,__func__,__LINE__,##arg)
+void RainLog(const char *fmt,...) __attribute__ ((format (gnu_printf, 1, 2)));
+void RainTrace(const char *fmt,...) __attribute__ ((format (gnu_printf, 1, 2)));
 
 static void RainLog(const char *fmt,...)
 {
@@ -46,8 +48,6 @@ static void RainLog(const char *fmt,...)
 
         day   = *localtime(&now.tv_sec);
         clock_gettime(CLOCK_REALTIME,&now);
-        dprintf(fd,"%02d:%02d:%02d.%03d ",day.tm_hour,day.tm_min,day.tm_sec,now.tv_nsec/1000000);
-        vdprintf(fd,fmt,arg_ptr);
         va_end(arg_ptr);
         close(fd);
     }
@@ -102,16 +102,12 @@ static void RainTrace(const char *fmt,...)
     if( fd == -1 ){
         return ;
     }
-    else{
-    }
 
     va_start(arg_ptr, fmt);
 
     day   = *localtime(&now.tv_sec);
     clock_gettime(CLOCK_REALTIME,&now);
 
-    printf("%02d:%02d:%02d.%03d ",day.tm_hour,day.tm_min,day.tm_sec,now.tv_nsec/1000000);
-    vprintf(fmt,arg_ptr);
     va_end(arg_ptr);
 
     dprintf(fd,"backtrace:\n");
@@ -129,7 +125,6 @@ static void RainTrace(const char *fmt,...)
         //  complex mode, try to resolve address name,need -ldl link option
         Dl_info info;
         char *demangled     = NULL;
-        int status          = -1;
         const char* symbol  = symbols ? symbols[i] : NULL;
 
         if (!dladdr(callstack[i], &info) || !info.dli_sname)
@@ -142,6 +137,7 @@ static void RainTrace(const char *fmt,...)
         symbol      = info.dli_sname;
 #if ( defined __cplusplus)&& (!defined ANDROID)
         if (info.dli_sname[0] == '_'){
+            int status          = -1;
             demangled = abi::__cxa_demangle(info.dli_sname, NULL, 0, &status);
             //  android version, __cxxabiv1::__cxa_demangle(info.dli_sname, NULL, 0, &status);
             if( status == 0 ){
@@ -184,12 +180,35 @@ static void RainTrace(const char *fmt,...)
 
 
 #ifdef __JAVA__
-void trace(){
-    //Thread.currentThread().getStackTrace()
-    StringWriter sw = new StringWriter();
-    new Throwable("").printStackTrace(new PrintWriter(sw));
-    String stackTrace = sw.toString();
+import java.io.FileWriter;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+
+
+void log(String val){
+    try{
+
+        SimpleDateFormat dateFormat = new SimpleDateFormat("HH:mm:ss.SSS");
+        String when = dateFormat.format(new Date());
+        FileWriter fw = new FileWriter("rainli.log",true);
+        fw.write( when + " " + val + "\n");
+        fw.close();
+    }
+    catch( Exception e){
+    }
 }
+void logbt(String val){
+    try{
+        StringWriter errors = new StringWriter();
+        new Throwable().printStackTrace(new PrintWriter(errors));
+        log( val + " BACKTRACE:\n" + errors);
+    }
+    catch( Exception e){
+    }
+}
+
 #endif
 
 
