@@ -1,3 +1,11 @@
+#define TEST_RAIN_LOG
+#undef TEST_OSAPI
+#undef TEST_INOTIFY
+#undef TEST_STLQUEUE_API
+#define TEST_BLOCKQUEUE
+
+#ifdef TEST_RAIN_LOG
+#define TEST_SHOW_SCREEN
 
 /*------------------------------------------------------------------------------------------------------------------
  *
@@ -35,7 +43,7 @@
 void RainLog(const char *fmt,...) __attribute__ ((format (gnu_printf, 1, 2)));
 void RainTrace(const char *fmt,...) __attribute__ ((format (gnu_printf, 1, 2)));
 
-static void RainLog(const char *fmt,...)
+void RainLog(const char *fmt,...)
 {
     int fd = openat(AT_FDCWD, RAINLILOG_FILENAME, O_CREAT|O_APPEND| O_WRONLY,0666);
     if( fd != -1 ){
@@ -46,8 +54,15 @@ static void RainLog(const char *fmt,...)
 
         va_start(arg_ptr, fmt);
 
-        day   = *localtime(&now.tv_sec);
         clock_gettime(CLOCK_REALTIME,&now);
+        day   = *localtime(&now.tv_sec);
+#ifdef TEST_SHOW_SCREEN
+        printf("%02d:%02d:%02d.%03d ",day.tm_hour,day.tm_min,day.tm_sec,now.tv_nsec/1000000);
+        vprintf(fmt,arg_ptr);
+#else
+        dprintf(fd,"%02d:%02d:%02d.%03d ",day.tm_hour,day.tm_min,day.tm_sec,now.tv_nsec/1000000);
+        vdprintf(fd,fmt,arg_ptr);
+#endif
         va_end(arg_ptr);
         close(fd);
     }
@@ -87,7 +102,7 @@ size_t captureBacktrace(void** buffer, size_t max)
 
 #endif
 
-static void RainTrace(const char *fmt,...)
+void RainTrace(const char *fmt,...)
 {
     void *callstack[128];
     const int nMaxFrames = sizeof(callstack) / sizeof(callstack[0]);
@@ -105,10 +120,17 @@ static void RainTrace(const char *fmt,...)
 
     va_start(arg_ptr, fmt);
 
-    day   = *localtime(&now.tv_sec);
     clock_gettime(CLOCK_REALTIME,&now);
-
+    day   = *localtime(&now.tv_sec);
+#ifdef TEST_SHOW_SCREEN
+        printf("%02d:%02d:%02d.%03d ",day.tm_hour,day.tm_min,day.tm_sec,now.tv_nsec/1000000);
+        vprintf(fmt,arg_ptr);
+#else
+        dprintf(fd,"%02d:%02d:%02d.%03d ",day.tm_hour,day.tm_min,day.tm_sec,now.tv_nsec/1000000);
+        vdprintf(fd,fmt,arg_ptr);
+#endif
     va_end(arg_ptr);
+
 
     dprintf(fd,"backtrace:\n");
 #ifdef ANDROID
@@ -211,6 +233,7 @@ void logbt(String val){
 
 #endif
 
+#endif
 
 
 
@@ -223,8 +246,7 @@ void logbt(String val){
 
 
 
-
-
+#ifdef TEST_OSAPI
 int task_create(void *(*start_routine) (void *), void *arg)
 {
     pthread_t slave_tid;
@@ -242,7 +264,9 @@ static inline int file_recreate(const char *fname)
         close(fd);
     return fd != -1 ? 0: -1;
 }
+#endif
 
+#ifdef TEST_INOTIFY
 /*------------------------------------------------------------------------------------------------------------------
  *
  *  INOTIFY EXAMPLE, provide inotifyapi_xxx
@@ -450,12 +474,12 @@ int main(int argc, char *argv[])
     inotifyapi_release(&handle);
     return 0;
 }
+#endif
 
 
 
 
-
-
+#ifdef TEST_STLQUEUE_API
 /*------------------------------------------------------------------------------------------------------------------
  *
  *  LIST EARASE SAMPLE:   use remove_if
@@ -570,4 +594,242 @@ int main()
 
     return 0;
 }
+#endif
+
+
+#endif
+
+
+
+/*------------------------------------------------------------------------------------------------------------------
+ *
+ *  BLOCK QUEUE :   RemotedBlockQueue
+ *
+ * ---------------------------------------------------------------------------------------------------------------*/
+#ifdef TEST_BLOCKQUEUE
+
+#include <pthread.h>
+#include <list>
+
+#define BUFFER_SIZE 8
+
+typedef void (*BLOCKQUEUE_CLEAR_FUNC)(void *);
+
+class RemotedBlockQueue{
+    pthread_mutex_t         m_locker;
+    pthread_cond_t          m_notEmpty;
+    pthread_cond_t          m_notFull;
+
+    volatile bool           m_stop;
+    const unsigned int      m_maxsz;
+    std::list<void *>       m_items;
+    BLOCKQUEUE_CLEAR_FUNC   m_clearfunc;
+
+    bool push(void* data,bool wait,bool isfront){
+	if( m_stop )
+	    return false;
+
+	pthread_mutex_lock(&m_locker);
+	while (isfull()){
+	    if( !wait || m_stop ){
+		pthread_mutex_unlock(&m_locker);
+		return false;
+	    }
+	    pthread_cond_wait(&m_notFull, &m_locker);
+	} 
+
+	if( isfront ){
+	    m_items.push_front(data);
+	}
+	else{
+	    m_items.push_back(data);
+	}
+
+	pthread_cond_signal(&m_notEmpty);
+	pthread_mutex_unlock(&m_locker);
+	return true;
+    }
+
+    bool pop(void** out,bool wait,bool isfront){
+	if( m_stop || out == NULL )
+	    return false;
+
+	*out        = NULL;
+	pthread_mutex_lock(&m_locker);
+	while (isempty()) {
+	    if( !wait || m_stop ){
+		pthread_mutex_unlock(&m_locker);
+		return false;
+	    }
+
+	    pthread_cond_wait(&m_notEmpty, &m_locker);
+	}
+
+	if( isfront ) {
+	    *out    = m_items.front();
+	    m_items.pop_front();
+	}
+	else {
+	    *out    = m_items.back();
+	    m_items.pop_back();
+	}
+
+	pthread_cond_signal(&m_notFull); 
+	pthread_mutex_unlock(&m_locker);
+	return true;
+    }
+
+    public:
+    RemotedBlockQueue(int maxsz,BLOCKQUEUE_CLEAR_FUNC clearfunc):m_maxsz(maxsz) {
+	m_stop          = false;
+	m_locker	= PTHREAD_MUTEX_INITIALIZER;
+	m_notEmpty 	= PTHREAD_COND_INITIALIZER;
+	m_notFull 	= PTHREAD_COND_INITIALIZER;
+	m_clearfunc 	= clearfunc;
+    }
+    ~RemotedBlockQueue(){
+	stop();
+    }
+
+    bool isfull(){
+	return m_items.size() >= m_maxsz;
+    }
+
+    bool isempty(){
+	return m_items.empty();
+    }
+
+    bool isstop(){
+	return m_stop;
+    }
+
+
+    bool push_front(void* data,bool wait = true){
+	return push(data,wait,true);
+    }
+    bool pop_front(void** data,bool wait = true){
+	return pop(data,wait,true);
+    }
+
+    bool push_back(void* data,bool wait = true){
+	return push(data,wait,false);
+    }
+
+    bool pop_back(void** data,bool wait = true){
+	return pop(data,wait,false);
+    }
+
+    void stop(){
+	pthread_mutex_lock(&m_locker);
+	m_stop  = true;
+	if( m_clearfunc ){
+	    for( std::list<void *>::iterator iter = m_items.begin(); iter != m_items.end(); iter ++ ){
+		m_clearfunc(*iter);
+	    }
+	}
+	m_items.clear();
+
+	pthread_cond_signal(&m_notEmpty); 
+	pthread_cond_signal(&m_notFull); 
+	pthread_mutex_unlock(&m_locker);
+    }
+    void enable(){
+	pthread_mutex_lock(&m_locker);
+	m_stop  = false;
+	pthread_mutex_unlock(&m_locker);
+    }
+};
+
+#if 1   //  TEST FUNC
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+#define BLKQUEUE_SZ         8
+#define END_FLAG (-1)
+
+RemotedBlockQueue	s_BlkQueue(BLKQUEUE_SZ,NULL);
+
+void* ProducerThread(void* data)
+{
+    long i;
+    usleep(1000);
+    RAIN_DBGLOG("producer begin\n");
+    for (i = 0; i < 16; ++i)
+    {
+	RAIN_DBGLOG("producer: %d\n", i);
+	if( false == s_BlkQueue.push_back((void *)i,false) ){
+	    RAIN_DBGLOG("producer fast push %d fail, will try again\n",i);
+	    if( false == s_BlkQueue.push_back((void *)i) ){
+		RAIN_DBGLOG(" error: producer slow push %d fail,stop:%d\n",i,s_BlkQueue.isstop());
+                return NULL;
+	    }
+	}
+    }
+    s_BlkQueue.push_back((void *)END_FLAG);
+    return NULL;
+}
+
+void* ConsumerThread(void* data)
+{
+    void *item = NULL;
+    RAIN_DBGLOG("consumer begin\n");
+    if( s_BlkQueue.pop_front(&item,false) == false ){
+	RAIN_DBGLOG("consumer first pop no data\n");
+    }
+    else{
+	RAIN_DBGLOG("consumer first: %p\n", item);
+    }
+
+    while (1)
+    {
+	usleep(1000000);
+	if( !s_BlkQueue.pop_front(&item) ){
+	    RAIN_DBGLOG("consumer pop fail,stop:%d\n",s_BlkQueue.isstop());
+            break;
+	}
+
+	if ((void *)END_FLAG == item)
+	    break;
+	RAIN_DBGLOG("consumer: %p\n", item);
+    }
+    return (NULL);
+}
+
+int main(int argc, char* argv[])
+{
+    pthread_t producer;
+    pthread_t consumer;
+    void * result;
+
+    RAIN_DBGLOG(" test producer/consumer\n");
+    pthread_create(&producer, NULL, &ProducerThread, NULL);
+    pthread_create(&consumer, NULL, &ConsumerThread, NULL);
+
+    pthread_join(producer, &result);
+    pthread_join(consumer, &result);
+
+    RAIN_DBGLOG("test stop producer\n");
+    for( int i = 0; i < BLKQUEUE_SZ ; i ++ ){
+        s_BlkQueue.push_back(result);
+    }
+    pthread_create(&producer, NULL, &ProducerThread, NULL);
+    usleep(2000);
+    s_BlkQueue.stop();
+    pthread_join(producer, &result);
+
+    s_BlkQueue.enable();
+    s_BlkQueue.push_back((void *)0x1001);
+
+    RAIN_DBGLOG("test stop consumer\n");
+    pthread_create(&consumer, NULL, &ConsumerThread, NULL);
+    usleep(2000);
+    s_BlkQueue.stop();
+    pthread_join(consumer, &result);
+
+    RAIN_DBGLOG("finish all test\n");
+    exit(EXIT_SUCCESS);
+}
+#endif
+
 #endif
