@@ -2,7 +2,9 @@
 #undef TEST_OSAPI
 #undef TEST_INOTIFY
 #undef TEST_STLQUEUE_API
-#define TEST_BLOCKQUEUE
+#undef TEST_BLOCKQUEUE
+#undef TEST_NONBLOCK_SOCKET
+#define TEST_NETNOTIFY
 
 #ifdef TEST_RAIN_LOG
 #define TEST_SHOW_SCREEN
@@ -21,9 +23,9 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <time.h>
-#include <execinfo.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <sys/syscall.h>  
 
 #ifdef ANDROID
 #include <unwind.h>
@@ -31,6 +33,7 @@
 #include <execinfo.h>
 
 #ifdef __cplusplus
+#include <execinfo.h>
 #include <cxxabi.h>
 #endif
 
@@ -38,10 +41,8 @@
 
 #define RAINLILOG_FILENAME    "rainli.log"
 
-#define RAIN_DBGLOG(fmt,arg...)         RainLog("[%s:%d] "fmt,__func__,__LINE__,##arg)
-#define RAIN_DBGTRACE(fmt,arg...)       RainTrace("[%s:%d] "fmt,__func__,__LINE__,##arg)
+#define RAIN_DBGLOG(fmt,arg...)         RainLog("[%s:%d] " fmt,__func__,__LINE__,##arg)
 void RainLog(const char *fmt,...) __attribute__ ((format (gnu_printf, 1, 2)));
-void RainTrace(const char *fmt,...) __attribute__ ((format (gnu_printf, 1, 2)));
 
 void RainLog(const char *fmt,...)
 {
@@ -57,10 +58,10 @@ void RainLog(const char *fmt,...)
         clock_gettime(CLOCK_REALTIME,&now);
         day   = *localtime(&now.tv_sec);
 #ifdef TEST_SHOW_SCREEN
-        printf("%02d:%02d:%02d.%03d ",day.tm_hour,day.tm_min,day.tm_sec,now.tv_nsec/1000000);
+        printf("%02d:%02d:%02d.%03ld %ld ",day.tm_hour,day.tm_min,day.tm_sec,now.tv_nsec/1000000,syscall(__NR_gettid));
         vprintf(fmt,arg_ptr);
 #else
-        dprintf(fd,"%02d:%02d:%02d.%03d ",day.tm_hour,day.tm_min,day.tm_sec,now.tv_nsec/1000000);
+        dprintf(fd,"%02d:%02d:%02d.%03ld %ld ",day.tm_hour,day.tm_min,day.tm_sec,now.tv_nsec/1000000,syscall(__NR_gettid));
         vdprintf(fd,fmt,arg_ptr);
 #endif
         va_end(arg_ptr);
@@ -69,6 +70,8 @@ void RainLog(const char *fmt,...)
 }
 
 
+#define RAIN_DBGTRACE(fmt,arg...)       RainTrace("[%s:%d] "fmt,__func__,__LINE__,##arg)
+void RainTrace(const char *fmt,...) __attribute__ ((format (gnu_printf, 1, 2)));
 #ifdef ANDROID
 struct BacktraceState
 {
@@ -832,4 +835,428 @@ int main(int argc, char* argv[])
 }
 #endif
 
+#endif
+
+
+#ifdef TEST_NONBLOCK_SOCKET
+#include <sys/types.h>          /* See NOTES */
+#include <sys/socket.h>
+#include <errno.h>
+#include <poll.h>
+#include <string.h>
+#include <arpa/inet.h>
+
+#define ERROR_STEP_SOCK_CREAT       0x010000
+#define ERROR_STEP_CONN_FAIL        0x020000
+#define ERROR_STEP_POLL_FAIL        0x030000
+#define ERROR_STEP_POLL_TIMEOUT     0x040000
+#define ERROR_STEP_OPT_ERR          0x050000
+#define ERROR_STEP_CONN_ERR         0x060000
+#define ERROR_STEP_GETFLAG_ERR      0x070000
+#define ERROR_STEP_SETFLAG_ERR      0x080000
+static const char *step2str(int step){
+    switch( step ){
+        case ERROR_STEP_SOCK_CREAT:     return "creat";
+        case ERROR_STEP_CONN_FAIL:      return "conn";
+        case ERROR_STEP_POLL_FAIL:      return "poll";
+        case ERROR_STEP_POLL_TIMEOUT:   return "poll_timeout";
+        case ERROR_STEP_OPT_ERR:        return "getsockopt";
+        case ERROR_STEP_CONN_ERR:       return "conn2";
+        case ERROR_STEP_GETFLAG_ERR:    return "fcntl";
+        case ERROR_STEP_SETFLAG_ERR:    return "fcntl_set";
+        default:                        return "unknown";
+    }
+}
+
+int connectwithtimeout(int sd,const char *addr,int port,int timeout_ms)
+{
+    int                 ret         = 0;
+    struct sockaddr_in  servaddr;
+    struct pollfd       pfd         = { sd, POLLIN, 0 };
+    int                 err         = 0;
+    socklen_t           len         = sizeof (int);
+    int                 flags       = 0;
+
+    memset(&servaddr,0,sizeof(servaddr));
+    servaddr.sin_family             = AF_INET;
+    servaddr.sin_port               = htons(port);
+    servaddr.sin_addr.s_addr        = inet_addr(addr);
+
+    if( sd == -1 ){
+        return ERROR_STEP_SOCK_CREAT | errno;
+    }
+
+    ret  = connect(sd,(const struct sockaddr*)&servaddr,sizeof(servaddr));
+    if( ret == 0 ){
+        goto setblock;
+    }
+
+    if( errno != EINPROGRESS ){
+        return ERROR_STEP_CONN_FAIL | errno;
+    }
+
+    ret = poll(&pfd, 1, timeout_ms);
+    if( ret == 0 ){
+        return ERROR_STEP_POLL_TIMEOUT | errno;
+    }
+    else if( ret == -1 ){
+        return ERROR_STEP_POLL_FAIL | errno;
+    }
+
+    ret = getsockopt (sd, SOL_SOCKET, SO_ERROR, &err,&len);
+    if( ret == -1 ){
+        return ERROR_STEP_OPT_ERR | errno;
+    }
+
+    if( err != 0 ){
+        return ERROR_STEP_CONN_ERR | err;
+    }
+
+
+setblock:
+    flags = fcntl(sd, F_GETFL, 0);
+    if( flags < 0 ){
+        return ERROR_STEP_SETFLAG_ERR | errno;
+    }
+
+    if( fcntl(sd, F_SETFL, (flags&~O_NONBLOCK)) !=0 ){
+        return ERROR_STEP_SETFLAG_ERR | errno;
+    }
+
+    return 0;
+}
+
+int testconnect(const char *addr,int port,int timeout_ms)
+{
+    int ret = -1;
+    RAIN_DBGLOG("begin test connect:%s:%d with timeout %d ms\n",addr,port,timeout_ms);
+    while(ret != 0 ){
+        int sd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+        if( sd == -1 ){
+            RAIN_DBGLOG("create socket fail: %d\n",errno);
+        }
+        else{
+            int ret = connectwithtimeout(sd,addr,port,timeout_ms);
+            close(sd);
+
+            if( ret == 0 ){
+                RAIN_DBGLOG("connect succ\n");
+            }
+            else{
+                RAIN_DBGLOG("connect fail, error step :0x%x/%s errno:%d/%s\n",ret & 0xffff0000,step2str(ret & 0xffff0000), ret & 0xffff,strerror(ret & 0xffff));
+            }
+        }
+    }
+    RAIN_DBGLOG("finish test\n");
+}
+
+int main(){
+    testconnect("10.206.139.237",22,300);
+}
+#endif
+
+
+
+
+
+
+
+
+#ifdef TEST_NETNOTIFY
+#include    <stdio.h>
+#include    <string.h>
+#include    <unistd.h>
+#include    <sys/types.h>
+#include    <sys/socket.h>
+#include    <netinet/in.h>
+#include    <linux/rtnetlink.h>
+#include    <linux/if_arp.h>
+#include    <linux/if_bridge.h>
+
+static int init_monisd()
+{
+    struct  sockaddr_nl sa;
+    int     soc =socket(AF_NETLINK,SOCK_DGRAM,NETLINK_ROUTE);
+
+    sa.nl_family=AF_NETLINK;
+    sa.nl_groups=RTMGRP_LINK | RTMGRP_IPV4_IFADDR | RTMGRP_IPV6_IFADDR;
+    bind(soc,(struct sockaddr *)&sa,sizeof(sa));
+
+    return soc;
+}
+
+static struct rtattr *dec_msghdr(int *family,struct nlmsghdr    *nlhdr){
+    struct ifinfomsg    *ifimsg = NULL;
+    struct ifaddrmsg    *ifamsg = NULL;
+
+    int ifi_family;
+    int ifi_index;
+    int ifi_flags;
+
+    printf("len: %d,",nlhdr->nlmsg_len);
+    printf("type: %x: ",nlhdr->nlmsg_type);
+
+    switch( nlhdr->nlmsg_type ){
+        case RTM_NEWLINK:
+            ifimsg  = NLMSG_DATA(nlhdr);
+            printf("NEW LINK\n");
+            break;
+        case RTM_DELLINK:
+            ifimsg  = NLMSG_DATA(nlhdr);
+            printf("DEL LINK\n");
+            break;
+
+        case RTM_DELADDR:
+            ifamsg  = NLMSG_DATA(nlhdr);
+            printf("DEL ADDR\n");
+            break;
+
+        case RTM_GETADDR:
+            ifamsg  = NLMSG_DATA(nlhdr);
+            printf("GET ADDR\n");
+            break;
+
+        default:
+            printf("<Error: uncheck %d continue>\n",nlhdr->nlmsg_type);
+            return NULL;
+    }
+
+    if(ifimsg){
+        ifi_family  = ifimsg->ifi_family;
+        ifi_index   = ifimsg->ifi_index;
+        ifi_flags   = ifimsg->ifi_flags;
+    }
+    else{
+        ifi_family  = ifamsg->ifa_family;
+        ifi_index   = ifamsg->ifa_index;
+        ifi_flags   = ifamsg->ifa_flags;
+    }
+
+    *family            =ifi_family; 
+    printf("family:%d/",ifi_family);
+    switch( ifi_family ){
+        case AF_UNSPEC:         printf("UniSpec\n");    break;
+        case AF_INET6:          printf("Inet6\n");      break;
+        case AF_INET:           printf("Inet\n");       break;
+        case AF_BRIDGE:         printf("bridge\n");     break;
+        default:                
+                                printf("Error family:%x continue\n",ifi_family);
+                                return NULL;
+    }
+    if( ifimsg ){
+        printf(" type: %x,",ifimsg->ifi_type);
+        printf("change: %x\n", ifimsg->ifi_change);
+    }
+
+    printf(" index: %d\n",ifi_index);
+    printf(" flags: %x =   ",ifi_flags);
+
+    if(ifi_flags&IFF_UP)            printf("UP,");
+    if(ifi_flags&IFF_BROADCAST)     printf("BROADCAST,");
+    if(ifi_flags&IFF_DEBUG)         printf("DEBUG,");
+    if(ifi_flags&IFF_LOOPBACK)      printf("LOOPBACK,");
+    if(ifi_flags&IFF_POINTOPOINT)   printf("POINTOPOINT,");
+    if(ifi_flags&IFF_NOTRAILERS)    printf("NOTRAILERS,");
+    if(ifi_flags&IFF_RUNNING)       printf("RUNNING,");
+    if(ifi_flags&IFF_NOARP)         printf("NOARP,");
+    if(ifi_flags&IFF_PROMISC)       printf("PROMISC,");
+    if(ifi_flags&IFF_MASTER)        printf("MASTER,");
+    if(ifi_flags&IFF_SLAVE)         printf("SLAVE,");
+    if(ifi_flags&IFF_MULTICAST)     printf("MULTICAST,");
+    if(ifi_flags&IFF_PORTSEL)       printf("PORTSEL,");
+    if(ifi_flags&IFF_AUTOMEDIA)     printf("AUTOMEDIA,");
+    if(ifi_flags&IFF_DYNAMIC)       printf("DYNAMIC,");
+    if(ifi_flags&IFF_LOWER_UP)      printf("LOWER_UP,");
+    if(ifi_flags&IFF_DORMANT)       printf("DORMANT,");
+    if(ifi_flags&IFF_ECHO)          printf("ECHO,");
+    printf("\n");
+    return ifimsg ? IFLA_RTA(ifimsg) : IFLA_RTA(ifamsg);
+}
+
+static const char *operstate2str(int stat)
+{
+    switch (stat){
+        case IF_OPER_UNKNOWN:       return "Unknown";
+        case IF_OPER_NOTPRESENT:    return "NetPresent";
+        case IF_OPER_DOWN:          return "Down";
+        case IF_OPER_LOWERLAYERDOWN: return "LowerDown";
+        case IF_OPER_TESTING:       return "Testing";
+        case IF_OPER_DORMANT:       return "L1Up";
+        case IF_OPER_UP:            return "Up";
+        default:                    return "UNKNOWN";
+    }
+}
+
+
+int main()
+{
+    int soc = init_monisd();
+
+    while(1){
+        struct timespec     now;
+        struct tm           day;
+
+        char                buf[4096];
+        struct nlmsghdr    *nlhdr;
+
+        int n=recv(soc,buf,sizeof(buf),0);
+        if(n<0){
+            perror("recv");
+            return(1);
+        }
+
+        clock_gettime(CLOCK_REALTIME,&now);
+        day   = *localtime(&now.tv_sec);
+        printf("%02d:%02d:%02d.%03ld %ld ",day.tm_hour,day.tm_min,day.tm_sec,now.tv_nsec/1000000,syscall(__NR_gettid));
+
+        for(nlhdr=(struct nlmsghdr *)buf;NLMSG_OK(nlhdr,n);nlhdr=NLMSG_NEXT(nlhdr,n)){
+            int                 rtalist_len;
+            int ifi_family;
+            
+            struct rtattr       *rta = dec_msghdr(&ifi_family,nlhdr);
+
+            if( !rta )
+                continue;
+
+            rtalist_len=nlhdr->nlmsg_len-NLMSG_LENGTH(sizeof(struct ifinfomsg));
+            for(;RTA_OK(rta,rtalist_len);rta=RTA_NEXT(rta,rtalist_len)){
+                unsigned char *p = (unsigned char *)RTA_DATA(rta);
+                printf(" type:%x =",rta->rta_type);
+                /*
+                if( ifi_family == AF_BRIDGE ){
+                    switch(rta->rta_type){
+                        case IFLA_BRIDGE_FLAGS:
+                            printf(" bridge flags: %d\n",*(unsigned short *)p); break;
+
+                        case IFLA_BRIDGE_MODE:
+                            printf(" bridge mode: %d\n",*(unsigned short *)p); break;
+                        default:
+                            printf(" unkown\n"); break;
+                    }
+                    continue;
+                }*/
+
+                switch(rta->rta_type){
+                    case IFLA_MTU:
+                        printf(" MTU: %d\n",*(int *)p);
+                        break;
+                    case IFLA_ADDRESS:
+                        printf(" HWADDR: %02X%02X%02X%02X%02X%02X\n",p[0],p[1],p[2],p[3],p[4],p[5]);
+                        break;
+                    case IFLA_BROADCAST:
+                        printf(" BROADCASTADDR: %d.%d.%d.%d\n",p[0],p[1],p[2],p[3]);
+                        break;
+                    case IFLA_IFNAME:
+                        printf(" IFName: %s\n",(char *)p);
+                        break;
+                    case IFLA_LINK:
+                        printf(" Link Type: %d\n",*(int *)p);
+                        break;
+                    case IFLA_QDISC:
+                        printf(" QDisc:%s\n",(char *)p);
+                        break;
+                    case IFLA_STATS:
+                        printf(" STAT\n");
+                        break;
+                    case IFLA_COST:
+                        printf(" cost: %d\n",*(int *)p);
+                        break;
+                    case IFLA_PRIORITY:
+                        printf(" prio: %d\n",*(int *)p);
+                        break;
+                    case IFLA_MASTER:
+                        printf(" master: %d\n",*(int *)p);
+                        break;
+                    case IFLA_WIRELESS:
+                        printf(" wireless: %d\n",*(int *)p);
+                        break;
+                    case IFLA_PROTINFO:
+                        printf(" ProtInfo: %d\n",p[0]);
+
+                        break;
+                    case IFLA_TXQLEN:
+                        printf("txqlen: %d\n",*(int *)p);
+                        break;
+                    case IFLA_MAP:
+                        printf("map: %d\n",*(int *)p);
+                        break;
+                    case IFLA_WEIGHT:
+                        printf("weight: %d\n",*(int *)p);
+                        break;
+                    case IFLA_OPERSTATE:
+                        printf(" operstate: %d/%s\n",*(int *)p,operstate2str(*(int *)p));
+                        break;
+                    case IFLA_LINKMODE:
+                        printf(" linkmode: %d\n",*(int *)p);
+                        break;
+                    case IFLA_LINKINFO:
+                        printf(" linkinfo: %d\n",*(int *)p);
+                        break;
+
+                    case IFLA_NET_NS_PID:
+                        printf(" net ns pid: %d\n",*(int *)p);
+                        break;
+                    case IFLA_IFALIAS:
+                        printf(" QDisc:%s\n",(char *)p);
+                        break;
+                    case IFLA_NUM_VF:
+                        printf(" num vf: %d\n",*(int *)p);
+                        break;
+                    case IFLA_VFINFO_LIST:
+                        printf(" vf info list: %d\n",*(int *)p);
+                        break;
+                    case IFLA_STATS64:
+                        printf(" stat64: %d\n",*(int *)p);
+                        break;
+                    case IFLA_VF_PORTS:
+                        printf(" vf ports: %d\n",*(int *)p);
+                        break;
+                    case IFLA_PORT_SELF:
+                        printf(" port self: %d\n",*(int *)p);
+                        break;
+                    case IFLA_AF_SPEC:
+                        {
+                            struct nlattr *spec = (struct nlattr *)p;
+                            printf(" af spec: %d\n",*(int *)p);
+                        }
+                        break;
+                    case IFLA_GROUP:
+                        printf(" group: %d\n",*(int *)p);
+                        break;
+                    case IFLA_NET_NS_FD:
+                        printf(" net ns fd: %d\n",*(int *)p);
+                        break;
+                    case IFLA_EXT_MASK:
+                        printf(" ext mask: %d\n",*(int *)p);
+                        break;
+                    case IFLA_PROMISCUITY:
+                        printf(" promisc: %d\n",*(int *)p);
+                        break;
+                    case IFLA_NUM_TX_QUEUES:
+                        printf(" tx queue: %d\n",*(int *)p);
+                        break;
+
+                    case IFLA_NUM_RX_QUEUES:
+                        printf(" rx queue: %d\n",*(int *)p);
+                        break;
+                    case IFLA_CARRIER:
+                        printf(" carrier: %d\n",*(int *)p);
+                        break;
+
+                    case IFLA_PHYS_PORT_ID:
+                        printf(" phy port id: %d\n",*(int *)p);
+                        break;
+
+                    default:
+                        printf(" UNKNOWN\n",rta->rta_type);
+                        break;
+                }
+            }
+        }
+        printf("\n");
+    }
+
+    close(soc);
+    return(0);
+}
 #endif
