@@ -1,0 +1,231 @@
+背景介绍
+
+Debian:  是 Ubuntu 的源头。收录了最全最新的开源软件包。但由于缺少商业支持和版本发布时间过长，所以出现了UBUNTU。
+
+              Debian 分成三个版本:
+
+                  stable:      稳定版本，可以商业使用。每个发布版本都有一个玩具总动员的角色名字。
+
+                  testing:    下一个stable, 但现在还没到发布程度，可能是因为还没到版本发布计划要求（例如其他功能还没完善，例如 gnone kde 等大软件）。
+
+                  unstable: 包含最新的软件。基本上用作开发是没问题的。也叫SID。
+
+chroot:    让软件的运行根目录切换到另外一个子目录下。被 chroot 的进程只能访问和使用这个子目录下的文件和库，无法访问原来的根目录。用于目录隔离。
+
+               chroot 跟虚拟化不一样。因为只有进程运行环境是独立的（环境变量，运行库，根目录），其他都还是使用父系统（内核，启动脚本等）
+
+schroot:  在chroot 前我们需要做准备工作，例如 mount /proc /sys /dev 到新的 root 目录下，还有把一些对新 root 也能访问的目录也使用 -rbind 的方式 mount 到新root目录的访问点。
+
+             同时在 chroot 成功后也要运行一些启动脚本。
+
+            schroot 就做这些事情。
+
+ 
+
+安装
+
+安装Debian
+
+安装debian 时，一般 进行3个分区，并且最好不要使用 LVM (重装时 LVM 不好恢复?)：
+
+     /      30G, ext4, ，物理分区，可启动。放debian 、 centos Ubuntu.
+
+    /home/build   一般可以考虑 100G以上，放代码
+
+   swap 留个 4 G 意思一下。
+
+ 
+
+在Debian中安装 CentOS 6.7
+
+CentOS 可以从其他机器复制过来，也可以在Debian上安装。
+
+为了简单建议直接复制一个可用的根文件系统到/home/centos/（安装目录）。 
+
+如果想研究自己安装，或只想安装最简单的CENTOS(不需要图形界面等软件包), 按下面方法：
+1.安装 yum, 并且使用 163 源。
+
+ 
+
+
+
+
+
+
+apt-get install yumcd /etc/yum/repos.d/mv CentOS-Base.repo CentOS-Base.repo.backup
+
+ wget http://mirrors.163.com/.help/CentOS6-Base-163.repomv CentOS6-Base-163.repo CentOS-Base.repo   
+ 
+
+
+ 
+
+2. 安装基本系统
+
+
+
+
+
+
+rm      -rf  /home/centos
+
+mkdir -p /home/centos/var/lib/rpm
+
+rpm    --rebuilddb --root=/home/centos/
+
+wget   http://mirrors.163.com/centos/6.7/os/x86_64/Packages/centos-release-6-7.el6.centos.12.3.x86_64.rpm
+
+rpm    -ivh --root==/home/centos/ --nodeps centos-release-6-7.el6.centos.12.3.x86_64.rpm 
+
+yum   --installroot=/home/centos/ install -y rpm-build yum 
+
+mkdir -p /home/centos/proc 
+
+mkdir -p /home/centos/dev 
+
+mkdir -p /home/centos/sys 
+
+ cp /etc/resolv.conf /home/centos/etc/  cp /etc/yum/repos.d/CentOS-Base.repo /home/centos/etc/yum.repos.d/
+
+echo "if [ -f ~/.bashrc ]; then . ~/.bashrc; fi" > /home/centos/root/.bash_profile
+
+echo 'PS1=\'\033[1;93;45m${debian_chroot:+($debian_chroot)}\033[0m\[\033[01;32m\]\u@\[\033[01;34m\]\w\[\033[00m\]\$ \'' >> /home/centos/root/.bashrc 
+ 
+
+
+
+
+
+ 
+
+在Debian中安装 Ubuntu 1404
+
+为了简单建议直接复制一个可用的根文件系统到/home/ubuntu/（安装目录）。 
+
+如果想研究自己安装，或只想安装最简单的Ubuntu1404(不需要图形界面等软件包), 可以试下面方法：
+
+
+
+
+
+
+apt-get install debootstrap
+
+wget http://mirrors.163.com/ubuntu/pool/main/d/debootstrap/debootstrap_1.0.72ubuntu1_all.deb
+
+ar vx debootstrap_1.0.72ubuntu1_all.deb
+
+tar xzf data.tar.gz
+
+cp usr/share/debootstrap/scripts/gutsy /usr/share/debootstrap/scripts/trusty
+
+ 
+
+rm      -rf  /home/ubuntu
+
+mkdir /home/ubuntu/
+
+ debootstrap --arch and64 trusty /home/ubuntu/ http://mirrors.163.com/ubuntu
+
+mkdir -p /home/ubuntu/proc 
+
+mkdir -p /home/ubuntu/dev 
+
+mkdir -p /home/ubuntu/sys 
+
+ cp /etc/resolv.conf /home/ubuntu/etc/ 
+
+echo 'deb http://mirrors.163.com/ubuntu trusty main multiverse' > /home/ubuntu/etc/apt/sources.list
+
+echo "if [ -f ~/.bashrc ]; then . ~/.bashrc; fi" > /home/ubuntu/root/.profile
+
+echo 'PS1=\'\033[1;93;44m${debian_chroot:+($debian_chroot)}\033[0m\[\033[01;32m\]\u@\[\033[01;34m\]\w\[\033[00m\]\$ \'' >> /home/ubuntu/root/.bashrc
+
+  
+ 
+
+
+
+
+
+在Debian中安装schroot, 用于管理 UBUNTU 1404/ CENTOS 6.7
+
+apt-get install schroot
+
+把下面行添加到/etc/schroot/schroot.conf，并把原来内容注掉：
+
+
+
+
+
+
+[centos]
+
+description=Centos 6 (amd64)
+
+directory=/home/centos
+
+root-users=root
+
+root-groups=root
+
+type=directory
+
+aliases=rh,default,67,c
+
+#preserve-environment=true
+
+#personality=linux32
+
+[ubuntu]
+
+description=Ubuntu trusty (amd64)
+
+directory=/home/ubuntu
+
+root-users=root
+
+root-groups=root
+
+type=directory
+
+aliases=trusty,1404,u
+ 
+
+
+
+
+
+启动
+
+启动 Ubuntu 
+
+
+
+
+
+
+schroot -c u
+ 
+
+
+
+
+
+启动 centos 6.7
+
+
+
+
+
+
+
+schroot -c c
+ 
+
+
+
+
+
+启动时会自动 mount /home/build, 方便快捷，不需要再频繁切换电脑进行不同模块编译。
+
