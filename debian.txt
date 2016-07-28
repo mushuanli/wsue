@@ -70,3 +70,17 @@ The same applies when modifying timeouts, defaults etc.later, too. The changes g
 
 grub-install /dev/sda
 
+---------------------------------------------------------------------------------------------
+FFMPEG
+Flip video  vertically:
+ffmpeg -i INPUT -vf vflip -c:a copy OUTPUT
+2. Flip video horizontally:
+
+ffmpeg -i INPUT -vf hflip -c:a copy OUTPUT
+3. Rotate 90 degrees clockwise:
+
+ffmpeg -i INPUT -vf transpose=1 -c:a copy OUTPUT
+4. Rotate 90 degrees counterclockwise:
+ffmpeg -i INPUT -vf transpose=2 -c:a copy OUTPUT
+ffmpeg -ss 5.32 -i input.mp4 -c:v libx264 -c:a libfaac out.mp4
+
