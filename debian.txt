@@ -92,3 +92,6 @@ ffmpeg -i INPUT -vf transpose=1 -c:a copy OUTPUT
 ffmpeg -i INPUT -vf transpose=2 -c:a copy OUTPUT
 ffmpeg -ss 5.32 -i input.mp4 -c:v libx264 -c:a libfaac out.mp4
 
+---------------------------------------------------------------------------------------------
+openssl req -x509 -nodes -newkey rsa:2048 -keyout key.pem -out cert.pem -days  300
+
