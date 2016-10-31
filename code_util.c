@@ -1260,3 +1260,738 @@ int main()
     return(0);
 }
 #endif
+
+
+/////////////////////////////////////////////////////
+#ifdef GOOGLEPROTOBUF_API_
+
+    bool Rain_GetEthInfo(std::string& name,std::string& ipaddr,std::string& macaddr)
+    {
+        char    addrBuf[128]    = "";
+        bool    ret             = false;
+        struct ifaddrs *ifa_list= 0, *ifa;
+
+        if (getifaddrs(&ifa_list)== -1) {
+            return false;
+        }
+
+        int32_t sd = socket( PF_INET, SOCK_DGRAM, 0 );
+        if( sd < 0 )
+        {
+            /// free memory allocated by getifaddrs
+            freeifaddrs( ifa_list );
+            return false;
+        }
+
+        for (ifa = ifa_list; ifa; ifa = ifa->ifa_next) {
+            if (!ifa->ifa_addr || !ifa->ifa_data)
+                continue;
+
+            /// print MAC address
+            struct ifreq req;
+            strcpy( req.ifr_name, ifa->ifa_name );
+            if( ioctl( sd, SIOCGIFHWADDR, &req ) != -1 ){
+                uint8_t* mac = (uint8_t*)req.ifr_ifru.ifru_hwaddr.sa_data;
+                char    macbuf[32]      = "";
+                sprintf(macbuf, "%02X:%02X:%02X:%02X:%02X:%02X",
+                        mac[0], mac[1], mac[2], mac[3], mac[4], mac[5] );
+                macaddr = macbuf;
+            }
+
+            if(ifa->ifa_addr->sa_family == AF_INET) {
+                const struct sockaddr_in *addr = (const struct sockaddr_in*)ifa->ifa_addr;
+                if(inet_ntop(AF_INET, &addr->sin_addr, addrBuf, 127)) {
+                    ret = true;
+                }
+            } 
+            else {
+                const struct sockaddr_in6 *addr6 = (const struct sockaddr_in6*)ifa->ifa_addr;
+                if(inet_ntop(AF_INET6, &addr6->sin6_addr, addrBuf, 127)) {
+                    ret = true;
+                }
+            }
+            
+            if( ret ){
+                if( ifa->ifa_name)
+                    name = ifa->ifa_name;
+                addrBuf[127]	= 0;
+                ipaddr	= addrBuf;
+                if( strcmp(ifa->ifa_name,"lo") )
+                    break;
+            }
+        }
+
+        freeifaddrs(ifa_list);
+        Rain_CloseSocket(sd);
+        return ret;
+    }
+
+    int Rain_InitUDP(IPEndPoint *server_address,IPEndPoint* local_address,const char *hostname,uint16_t port,bool isserv){
+        char	service[32];
+        struct addrinfo hints, *res, *ressave;
+        int n;
+
+        int sd      = -1;
+        int retval  = -1;
+        IPEndPoint convaddr;
+
+        //  server input local name and port, expect output local_address
+        //  client input server's name and port, expect output server_address and local_address
+        if( !local_address )
+            return -1;
+
+        if( isserv ){
+            if( port == 0 )
+                return -1;
+
+            if( !hostname )
+                hostname    = "0.0.0.0";
+        }
+        else{
+            if( !hostname || !hostname[0] || port == 0 || !server_address )
+                return -1;
+        }
+
+        sprintf(service,"%d",port);
+
+        memset(&hints, 0, sizeof(struct addrinfo));
+        hints.ai_family = PF_UNSPEC;
+        hints.ai_socktype = SOCK_DGRAM;
+        hints.ai_flags  = AI_ADDRCONFIG;
+
+
+        n = getaddrinfo(hostname, service, &hints, &res);
+
+        if (n <0 || !res) {
+            fprintf(stderr,
+                    "getaddrinfo error:: [%s]\n",
+                    gai_strerror(n));
+            return -1;
+        }
+
+        ressave = res;
+
+        do{
+            // check address
+            retval = convaddr.FromSockAddr(res->ai_addr,res->ai_addrlen) ? 0 : -1;
+            if( retval != 0){
+                continue;
+            }
+
+            int family  = convaddr.GetFamily();
+            
+            if( convaddr.address() == IPAddress::IPv4Localhost()
+                    || convaddr.address() == IPAddress::IPv6Localhost() ){
+                if( isserv || family == ADDRESS_FAMILY_IPV6 )
+                    continue;
+            }
+            else if( convaddr.address().IsZero() ){
+                if( !isserv )
+                    continue;
+            }
+
+            //  check if socket can success create
+            sd  = socket( family == ADDRESS_FAMILY_IPV6 ? AF_INET6 : AF_INET,SOCK_DGRAM,0);
+            if( sd == -1 )
+                continue;
+
+            struct sockaddr_storage	addr;
+            socklen_t               addrlen = sizeof(addr);
+            if( isserv ){
+                retval = convaddr.ToSockAddr((struct sockaddr*)&addr,&addrlen) ? 0 : -1;
+                if( retval == 0 )
+                    retval = bind(sd,(sockaddr *)&addr,addrlen);
+            }
+            else{
+                char        tmpbuf[1];
+                IPEndPoint  tmpaddr(convaddr.address(),22);
+
+                retval = tmpaddr.ToSockAddr((struct sockaddr*)&addr,&addrlen)? 0 : -1;
+                if( retval == 0 )
+                    retval = sendto(sd,tmpbuf,1,0,(struct sockaddr *)&addr,addrlen) == 1 ? 0 : -1;
+
+                if( retval >= 0 ){
+                    struct sockaddr_storage laddr;
+                    socklen_t address_length   = sizeof(laddr);
+
+                    retval = getsockname(sd,(sockaddr *)&laddr,&address_length);
+
+                    if( retval == 0  ){
+                        if( !local_address->FromSockAddr((sockaddr *)&laddr,address_length) ){
+                            retval = -1;
+                        }
+                    }
+                }
+            }
+
+            if( retval == 0 ){
+                break;
+            }
+
+            Rain_CloseSocket(sd);
+            sd  = -1;
+        }while((res = res->ai_next) != NULL);
+
+        freeaddrinfo(ressave);
+
+        if( retval == 0 ){
+            if( isserv ){
+                *local_address  = convaddr;
+            }
+            else{
+                *server_address  = convaddr;
+            }
+
+            return sd;
+        }
+        else{
+            return -1;
+        }
+    }
+
+
+
+
+    int Rain_UDPSend(int sd,const char *buf,int len,const IPEndPoint *peer_address)
+    {
+        if( peer_address ){
+            sockaddr_storage   dst;
+            socklen_t          dstlen  = sizeof(dst);
+            if(! peer_address->ToSockAddr((sockaddr *)&dst, &dstlen) ){
+                RAIN_TRACE_ERROR("serv send fail, addr invalid\n");
+                return -1;
+            }
+            int ret;
+            WRAP_SYSAPI(ret,sendto(sd,buf,len,0,(struct sockaddr *)&dst,dstlen));
+
+            TRACE_UDP(buf,len,&dst,1,ret);
+            return ret;
+        }
+        else{
+            int ret;
+            WRAP_SYSAPI(ret, send(sd,buf,len,0));
+            TRACE_UDP(buf,len,NULL,1,ret);
+            return ret;
+        }
+    }
+
+
+    bool Rain_Poll(int sd,int timeout_ms)
+    {
+        int ret = -1;
+        struct pollfd pfds	 = {sd,POLLIN,0};
+        WRAP_SYSAPI( ret , poll(&pfds,1,timeout_ms));
+        if( ret == 1 && ((pfds.revents & POLLIN)) ){
+            return false;
+        }
+        return true;
+    }
+
+    int Rain_UDPRecv(int sd,char* buf,size_t maxsz,IPEndPoint *peer_address)
+    {
+        if( peer_address ){
+            sockaddr_storage   dst;
+            socklen_t          dstlen  = sizeof(dst);
+            int ret;
+            WRAP_SYSAPI(ret , recvfrom(sd,buf,maxsz,0,(struct sockaddr *)&dst,&dstlen));
+            if(! peer_address->FromSockAddr((sockaddr *)&dst, dstlen) ){
+                RAIN_TRACE_ERROR("serv recv %d fail, addr invalid\n",ret);
+                return -1;
+            }
+
+            TRACE_UDP(buf,ret,&dst,0,ret);
+            return ret;
+        }
+        else{
+            int ret;
+            WRAP_SYSAPI(ret , recv(sd,buf,maxsz,0));
+            TRACE_UDP(buf,ret,NULL,0,ret);
+            return ret;
+        }
+    }
+
+
+
+
+    int Rain_TCPCreate(const char *serv,uint16_t port,bool isbind)
+    {
+        int 	sockfd	= -1;
+        char	portstr[32];
+        struct addrinfo hints, *res, *ressave;
+
+        bzero(&hints, sizeof(struct addrinfo));
+        hints.ai_family 		= PF_UNSPEC;
+        hints.ai_socktype		= SOCK_STREAM;
+        if( isbind ){
+            hints.ai_flags		= AI_PASSIVE;
+        }
+        else{
+            if( !serv || !serv[0] ){
+                RAIN_TRACE_WARNING( "SockAPI_Create	param error for %s:%d bind:%d\n",serv ? serv: "NULL",port,isbind);
+                return -1;
+            }
+        }
+
+        sprintf(portstr,"%d",port);
+
+        int ret =  getaddrinfo(serv, portstr, &hints, &res);
+        if( ret != 0) {
+            RAIN_TRACE_WARNING( "SockAPI_Create getaddr fail for %s:%d bind:%d\n",serv ? serv: "NULL",port,isbind);
+            return -1;
+        }
+
+        ressave = res;
+
+        do {
+            struct sockaddr_in* paddr = (struct sockaddr_in*)res->ai_addr;
+            if( isbind ){
+                if( paddr->sin_addr.s_addr == htonl(0x7f000001))
+                    continue;
+            }
+            else{
+                if( paddr->sin_addr.s_addr == 0)
+                    continue;
+            }
+
+            sockfd = socket(res->ai_family, res->ai_socktype,
+                    res->ai_protocol);
+            if(sockfd < 0) {
+                RAIN_TRACE_WARNING( "SockAPI_Create getsock fail for %s:%d bind:%d\n",serv ? serv: "NULL",port,isbind);
+
+                continue;
+            }
+
+            int on	= 1;
+            if( isbind ){
+                if( setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) != 0 ){
+                    RAIN_TRACE_WARNING( "SockAPI_Create reuse port fail for %s:%d bind:%d\n",serv ? serv: "NULL",port,isbind);
+                }
+                if(bind(sockfd, res->ai_addr, res->ai_addrlen) == 0
+                        && listen(sockfd, TCP_DEFAULTBACK_LOG) == 0 ) {
+                    break;
+                }
+            }
+            else{
+                if(connect(sockfd, res->ai_addr, res->ai_addrlen) == 0) {
+                    break;
+                }
+                setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, (void*)&on, sizeof(on)) ;
+            }
+            Rain_CloseSocket(sockfd);
+            sockfd = -1;
+            RAIN_TRACE_WARNING( "SockAPI_Create init sock fail for %s:%d bind:%d\n",serv ? serv: "NULL",port,isbind);
+        }while((res = res->ai_next) != NULL);
+
+        freeaddrinfo(ressave);
+        if( sockfd >= 0 )
+            return sockfd;
+
+        RAIN_TRACE_WARNING( "SockAPI_Create fatal create fail for %s:%d bind:%d\n",serv ? serv: "NULL",port,isbind);
+        return -1;
+    }
+
+
+
+
+
+    bool Rain_RecvN(int sd,char* p, size_t size,int timeout_ms,uint16_t interval_wait_ms){
+        if( sd < 0 )
+            return false;
+
+        while( size > 0 ){
+            int ret;
+            if( timeout_ms != -1 ){
+                struct pollfd pfds	 = {sd,POLLIN,0};
+                WRAP_SYSAPI( ret , poll(&pfds,1,timeout_ms));
+                if( ret != 1 || (!(pfds.revents & POLLIN)) ){
+                    return false;
+                }
+
+                timeout_ms = interval_wait_ms;
+            }
+
+            WRAP_SYSAPI( ret , recv(sd,p,size,0) );
+
+            if( ret <= 0 ){
+                RAIN_TRACE_WARNING( " %d recv data error, ret: %d,errno:%d\n" ,sd,ret , errno);
+
+                return false;
+            }
+
+            size	-= ret;
+            p	+= ret;
+        }
+
+        return true;
+    }
+
+    bool Rain_SendN(int sd,const char* p, size_t size){
+        if( sd < 0 )
+            return false;
+        while( size > 0 ){
+            int ret;
+            WRAP_SYSAPI( ret , send(sd,p,size,0) );
+
+            if( ret <= 0 ){
+                RAIN_TRACE_WARNING( " %d send data error, ret: %d,errno:%d\n" ,sd,ret , errno);
+                return false;
+            }
+
+            size	-= ret;
+            p	+= ret;
+        }
+
+        return true;
+    }
+
+
+    bool Rain_StartTask(pthread_t *thrid,void* (*start_routine)(void*),void *arg)
+    {
+        pthread_t slave_tid;
+        int ret = pthread_create(thrid ? thrid : &slave_tid, NULL, start_routine, arg);
+	if( ret == 0 && !thrid )
+	    pthread_detach(slave_tid);
+        return ret == 0;
+    }
+
+
+
+
+    static int Rsa2String(RSA *r,std::string& out,bool isPublic)
+    {
+        //bp_private = BIO_new_file(RSA_PRIV_FILE, "w+");
+        BIO*	bp	= BIO_new(BIO_s_mem());
+        int 	ret = isPublic ? PEM_write_bio_RSAPublicKey(bp, r) :
+            PEM_write_bio_RSAPrivateKey(bp, r, NULL, NULL, 0, NULL, NULL);;
+        if(ret != 1){
+            out.clear();
+            BIO_free_all(bp);
+            return 0;
+        }
+
+        int keylen = BIO_pending(bp);	 
+        char	*buf	= new char[keylen+1];
+
+        BIO_read(bp,buf , keylen);
+        buf[keylen] = 0;
+        out.assign(buf,keylen+1);
+        delete[] buf;
+
+        BIO_free_all(bp);
+        return 1;
+    }
+
+    bool Rain_RSAGenKey(std::string& priv,std::string& pub){
+        priv.clear();
+        pub.clear();
+
+        RSA 			*r = NULL;
+
+        // 1. generate rsa key
+        BIGNUM* bne = BN_new();
+        int ret = BN_set_word(bne,RSA_F4);
+        if(ret != 1){
+            goto free_all;
+        }
+
+        r = RSA_new();
+        ret = RSA_generate_key_ex(r, 2048, bne, NULL);
+        if(ret != 1){
+            goto free_all;
+        }
+
+        // 2. save public key
+        // 3. save private key
+        ret = Rsa2String(r,priv,false);
+        if( ret == 1 ){
+            ret = Rsa2String(r,pub,true);
+            if( ret != 1 ){
+                priv.clear();
+            }
+        }
+
+        // 4. free
+free_all:
+        RSA_free(r);
+        BN_free(bne);
+
+	/* ////	ONLY CHECK RSA SIGN/VERIFY FUNCTION
+	std::string sign;
+	const char* data	= "hellpafafasfasfadsasfsdafafasdfsdagfgfafgadsfasfasdfadf";
+	int ret1 = Rain_RSASign(sign,data,strlen(data),priv.data(),priv.size());
+	int ret2 = Rain_RSAVerify(sign,data,strlen(data),pub.data(),pub.size());
+	*/
+        return (ret == 1);
+    }
+
+    int Rain_RSA256Hash(unsigned char hash[32],const char *string, int len)
+    {
+        SHA256_CTX sha256;
+        SHA256_Init(&sha256);
+        SHA256_Update(&sha256, string, len);
+        SHA256_Final(hash, &sha256);
+        return 0;
+    }
+
+
+    int Rain_RSASign(std::string &sign,const char *data, int dataLen,const char *privkey, int privkeylen)
+    {   
+        if( !data || dataLen <= 0 || !privkey || privkeylen <= 0 )
+            return -1;
+
+	unsigned char hash[SHA256_DIGEST_LENGTH]; 
+	unsigned char signature[2048/8]; 
+	unsigned int signatureLength; 
+	int sigret = 0; 
+
+	SHA256( (unsigned char *)data,dataLen, hash );
+
+#ifdef __APPLE__
+    BIO *mem = BIO_new_mem_buf((void *)privkey, privkeylen);
+#else
+    BIO *mem = BIO_new_mem_buf(privkey, privkeylen);
+#endif
+	if (mem != NULL){
+	    RSA *rsa_private = PEM_read_bio_RSAPrivateKey(mem, NULL, NULL, NULL);
+	    if (rsa_private != NULL
+		    && RSA_check_key(rsa_private) != 0 ){
+		sigret = RSA_sign( NID_sha256, hash, SHA256_DIGEST_LENGTH, signature, &signatureLength, rsa_private );
+		if( sigret == 1 )
+		    sign.assign((char *)signature,signatureLength);
+	    }
+
+	    if( rsa_private )
+		RSA_free(rsa_private);
+	    BIO_free (mem);
+	}
+
+	return sigret == 1 ? 0 : -1;
+    }
+
+    int Rain_RSAVerify(const std::string &sign,const char *data, int dataLen,const char *pubkey, int pubkeylen)
+    {
+	if( !data || dataLen <= 0 || !pubkey || pubkeylen <= 0 )
+	    return -1;
+
+	unsigned char hash[SHA256_DIGEST_LENGTH]; 
+	int sigret = 0; 
+
+	SHA256( (unsigned char *)data,dataLen, hash );
+
+#ifdef __APPLE__
+	BIO *mem = BIO_new_mem_buf((void*)pubkey, pubkeylen);
+#else
+    BIO *mem = BIO_new_mem_buf(pubkey, pubkeylen);
+#endif
+	if (mem != NULL){
+	    RSA *rsa_public = PEM_read_bio_RSAPublicKey(mem, NULL, NULL, NULL);
+	    if (rsa_public != NULL ){
+		sigret = RSA_verify( NID_sha256, hash, SHA256_DIGEST_LENGTH, (const unsigned char *)sign.data(), sign.size(), rsa_public );
+	    }
+
+	    if( rsa_public )
+		RSA_free(rsa_public);
+	    BIO_free (mem);
+	}
+
+	return sigret == 1 ? 0 : -1;
+    }
+
+#define OPENSSL_PRN_INFO(fmt,arg...)    
+
+static    int gcmdeccnt = 0;
+static    int gcmenccnt = 0;
+#define OPENSSL_PRN_ERROR(fmt,arg...)   {   \
+    char    buf[256]    = "";   unsigned long err = ERR_get_error();    \
+    RAIN_TRACE_WARNING(  fmt " err:%lu dec/enc:%d/%d <%s>\n",##arg,err,gcmdeccnt,gcmenccnt,ERR_error_string(err,buf)); \
+}
+
+#define OPENSSL_PUT_ERROR(x,y)      OPENSSL_PRN_ERROR( #x " " #y "dec/enc:%d/%d \n",gcmdeccnt,gcmenccnt)
+
+
+
+    int RMXQuic_GCMEncrypt(const unsigned char *plaintext, int plaintext_len, const unsigned char *aad,
+            int aad_len, const unsigned char *key,const unsigned char *iv,int iv_len,
+            unsigned char *ciphertext,int taglen)
+    {
+        EVP_CIPHER_CTX *ctx;
+
+        int len;
+
+        int ciphertext_len;
+
+
+        /* Create and initialise the context */
+        if(!(ctx = EVP_CIPHER_CTX_new())){
+            OPENSSL_PRN_ERROR("create ctx fail\n");
+            return -1;
+        }
+
+        /* Initialise the encryption operation. */
+        if(1 != EVP_EncryptInit_ex(ctx, EVP_aes_128_gcm(), NULL, NULL, NULL)){
+            EVP_CIPHER_CTX_free(ctx);
+            OPENSSL_PRN_ERROR("init ctx fail\n");
+            return -1;
+        }
+
+        /* Set IV length if default 12 bytes (96 bits) is not appropriate */
+        if(1 != EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, iv_len, NULL)){
+            EVP_CIPHER_CTX_free(ctx);
+            OPENSSL_PRN_ERROR("EVP_CTRL_GCM_SET_IVLEN fail\n");
+            return -1;
+        }
+
+        /* Initialise key and IV */
+        if(1 != EVP_EncryptInit_ex(ctx, NULL, NULL, key, iv)){
+            EVP_CIPHER_CTX_free(ctx);
+            OPENSSL_PRN_ERROR("EVP_CTRL_GCM_SET_IV + key fail\n");
+            return -1;
+        }
+
+        /* Provide any AAD data. This can be called zero or more times as
+         * required
+         */
+        if( aad && aad_len > 0 ){
+            if(1 != EVP_EncryptUpdate(ctx, NULL, &len, aad, aad_len)){
+                EVP_CIPHER_CTX_free(ctx);
+                OPENSSL_PRN_ERROR("EVP_EncryptUpdate NULL fail\n");
+                return -1;
+            }
+        }
+
+
+        OPENSSL_PRN_INFO("enc: %d out: txtlen %d + %d aad:%d \n", plaintext_len,ciphertext_len,len,aad_len);
+
+        /* Provide the message to be encrypted, and obtain the encrypted output.
+         * EVP_EncryptUpdate can be called multiple times if necessary
+         */
+        if(1 != EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, plaintext_len)){
+            EVP_CIPHER_CTX_free(ctx);
+            OPENSSL_PRN_ERROR("EVP_EncryptUpdate txt fail\n");
+            return -1;
+        }
+        ciphertext_len = len;
+
+        /* Finalise the encryption. Normally ciphertext bytes may be written at
+         * this stage, but this does not occur in GCM mode
+         */
+        if(1 != EVP_EncryptFinal_ex(ctx, ciphertext + len, &len)){
+            EVP_CIPHER_CTX_free(ctx);
+            OPENSSL_PRN_ERROR("EVP_EncryptFinal_ex fail\n");
+            return -1;
+        }
+
+        OPENSSL_PRN_INFO("enc:%s %d out: txtlen %d + %d\n",plaintext, plaintext_len,ciphertext_len,len);
+        ciphertext_len += len;
+
+        /* Get the tag */
+        if(1 != EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, taglen, ciphertext + ciphertext_len )){
+            EVP_CIPHER_CTX_free(ctx);
+            OPENSSL_PRN_ERROR("EVP_CTRL_GCM_GET_TAG fail\n");
+            return -1;
+        }
+
+        /* Clean up */
+        EVP_CIPHER_CTX_free(ctx);
+
+        gcmenccnt ++;
+        return ciphertext_len + taglen;
+    }
+
+    int RMXQuic_GCMDecrypt(const unsigned char *ciphertext, int ciphertext_len, const unsigned char *aad,
+            int aad_len,const unsigned char *key, const unsigned char *iv,int iv_len,
+            unsigned char *plaintext,int taglen)
+    {
+        EVP_CIPHER_CTX *ctx;
+        int len;
+        int plaintext_len;
+        int ret;
+
+        /* Create and initialise the context */
+        if(!(ctx = EVP_CIPHER_CTX_new())){
+            OPENSSL_PRN_ERROR("EVP_CIPHER_CTX_new fail\n");
+            return -1;
+        }
+
+        /* Initialise the decryption operation. */
+        if(!EVP_DecryptInit_ex(ctx, EVP_aes_128_gcm(), NULL, NULL, NULL)){
+            EVP_CIPHER_CTX_free(ctx);
+            OPENSSL_PRN_ERROR("EVP_DecryptInit_ex fail\n");
+            return -1;
+        }
+
+        /* Set IV length. Not necessary if this is 12 bytes (96 bits) */
+        if(!EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, iv_len, NULL)){
+            EVP_CIPHER_CTX_free(ctx);
+            OPENSSL_PRN_ERROR("EVP_CTRL_GCM_SET_IVLEN fail\n");
+            return -1;
+        }
+
+        /* Initialise key and IV */
+        if(!EVP_DecryptInit_ex(ctx, NULL, NULL, key, iv)){
+            EVP_CIPHER_CTX_free(ctx);
+            OPENSSL_PRN_ERROR("EVP_CTRL_GCM_GET_TAG fail\n");
+            return -1;
+        }
+
+        /* Provide any AAD data. This can be called zero or more times as
+         * required
+         */
+        if( aad && aad_len > 0 ){
+            if(!EVP_DecryptUpdate(ctx, NULL, &len, aad, aad_len)){
+                EVP_CIPHER_CTX_free(ctx);
+                OPENSSL_PRN_ERROR("EVP_DecryptUpdate aad fail\n");
+                return -1;
+            }
+        }
+
+        /* Provide the message to be decrypted, and obtain the plaintext output.
+         * EVP_DecryptUpdate can be called multiple times if necessary
+         */
+
+        if(!EVP_DecryptUpdate(ctx, plaintext, &len, ciphertext, ciphertext_len - taglen)){
+            EVP_CIPHER_CTX_free(ctx);
+            OPENSSL_PRN_ERROR("EVP_DecryptUpdate txt fail\n");
+            return -1;
+        }
+        plaintext_len = len;
+
+        /* Set expected tag value. Works in OpenSSL 1.0.1d and later */
+        if( taglen > 0 ){
+            unsigned char tag[taglen];
+            memcpy(tag,ciphertext + plaintext_len,taglen);
+            if(!EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, taglen,tag)){
+                EVP_CIPHER_CTX_free(ctx);
+                OPENSSL_PRN_ERROR("EVP_CTRL_GCM_SET_TAG fail\n");
+                return -1;
+            }
+        }
+
+        /* Finalise the decryption. A positive return value indicates success,
+         * anything else is a failure - the plaintext is not trustworthy.
+         */
+        ret = EVP_DecryptFinal_ex(ctx, plaintext + len, &len);
+        OPENSSL_PRN_INFO("dec:%s %d in: ciphlen %d + %d ret:%d\n",plaintext, plaintext_len,ciphertext_len- taglen,len,ret);
+
+        /* Clean up */
+        EVP_CIPHER_CTX_free(ctx);
+
+        if(ret > 0)
+        {
+            /* Success */
+            plaintext_len += len;
+            gcmdeccnt ++;
+            return plaintext_len;
+        }
+        else
+        {
+            /* Verify failed */
+            OPENSSL_PRN_ERROR("dec:%s %d in: ciphlen %d + %d ret:%d\n",plaintext, plaintext_len,ciphertext_len- taglen,len,ret);
+            return -1;
+        }
+    }
+#endif
+}
+
+
+#endif
