@@ -1995,3 +1995,65 @@ static    int gcmenccnt = 0;
 
 
 #endif
+
+
+#if 0
+    bool EPollAdd(int sd,RMXQuicWriter::EPollMode mode ,RMXQUIC_POLL_CALLBACK parser,void *data)
+    {
+        if( sd < 0 || epollfd_ < 0 )
+            return false;
+
+        __uint32_t event    = 0;// EPOLLERR|EPOLLHUP;
+        if( mode == RMXQuicWriter::EPollRead || mode == RMXQuicWriter::EPollRW )
+            event   |= EPOLLIN |EPOLLPRI;
+        if( mode == RMXQuicWriter::EPollWrite || mode == RMXQuicWriter::EPollRW )
+            event   |= EPOLLOUT;
+
+        struct epoll_event ev;
+        memset(&ev,0,sizeof(ev));
+        ev.events = event;
+        ev.data.fd = sd;
+        if( epoll_ctl(epollfd_,EPOLL_CTL_ADD,sd,&ev) != 0 ){
+            RAIN_TRACE_ERROR("add %d:%p,%p ev:%x fail errcode:%d\n",sd,parser,data,event,errno);
+            return false;
+        }
+
+        pollfds_[sd]    = HeapItem(parser,data,mode);
+        RMXQUIC_TRACE_DEBUG("add %d:%p,%p ev:0x%x \n",sd,parser,data,event);
+
+        return true;
+    }
+
+    void EPollDel(int sd)
+    {
+        if( epoll_ctl(epollfd_,EPOLL_CTL_DEL,sd,NULL) != 0 
+                && errno != ENOENT )
+            RAIN_TRACE_WARNING("del %d fail errcode:%d\n",sd,errno);
+        pollfds_.erase(sd);
+        RAIN_TRACE_DEBUG("del %d\n",sd);
+    }
+
+    bool EPollMod(int sd, RMXQuicWriter::EPollMode mode){
+        if( sd < 0 || epollfd_ < 0 || (pollfds_.find(sd) == pollfds_.end()) )
+            return false;
+
+        __uint32_t event    = 0;//EPOLLERR|EPOLLHUP;
+        if( mode == RMXQuicWriter::EPollRead || mode == RMXQuicWriter::EPollRW )
+            event   |= EPOLLIN |EPOLLPRI;
+        if( mode == RMXQuicWriter::EPollWrite || mode == RMXQuicWriter::EPollRW )
+            event   |= EPOLLOUT;
+
+        struct epoll_event ev;
+        memset(&ev,0,sizeof(ev));
+        ev.events = event;
+        ev.data.fd = sd;
+        if( epoll_ctl(epollfd_,EPOLL_CTL_MOD,sd,&ev) != 0 ){
+            RAIN_TRACE_ERROR("mod %d: to ev:%x fail errcode:%d\n",sd,event,errno);
+            return false;
+        }
+
+        pollfds_[sd].mode_ = mode;
+        RAIN_TRACE_DEBUG("mod %d ev:0x%x \n",sd,event);
+
+        return true;
+    }
