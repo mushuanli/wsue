@@ -20,6 +20,8 @@ schroot:  在chroot 前我们需要做准备工作，例如 mount /proc /sys /de
 
             schroot 就做这些事情。
 
+schroot终止所有未正常退出的环境(退出后，使用mount还能看到schroot路径):
+           schroot --end-session --all-sessions
  
 
 安装
