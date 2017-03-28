@@ -7,13 +7,26 @@ mount --rbind /dev dev
 
 chroot .
 apt-get update
-apt-get install locales
-dpkg-reconfigure tzdata locales
-apt-get install ssh
-apt-get install linux-kernel-images-amd64 grub-pc
+dpkg-reconfigure tzdata 
+apt-get install locales ssh linux-image-amd64 grub-pc net-tools bzip2
+dpkg-reconfigure locales 
+
 vi /etc/fstab
+============ add =============================
+/dev/sda1       /       ext4 noatime,nodiratime,relatime,errors=remount-ro 0 1
+===============================================
+
 vi /etc/resolv.conf
+
+
 vi /etc/network/interfaces
+============ add =============================
+auto lo
+iface lo inet loopback
+
+auto eth0
+iface eth0 inet dhcp
+===============================================
 vi /etc/envirienment
 
 passwd
