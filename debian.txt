@@ -108,3 +108,22 @@ ffmpeg -ss 5.32 -i input.mp4 -c:v libx264 -c:a libfaac out.mp4
 ---------------------------------------------------------------------------------------------
 openssl req -x509 -nodes -newkey rsa:2048 -keyout key.pem -out cert.pem -days  300
 
+
+---------------------------------------------------------------------------------------------
+USB BOOT 
+Type mkfs.vfat -F 32 -n MULTIBOOT /dev/sdx1 (to format the partition as fat32)
+III. Install Grub2 on the USB Flash Drive:
+
+Important Note:
+Old versions of grub used --root-directory=/mnt/USB
+while current versions use --boot-directory=/mnt/USB/boot
+
+If you use the wrong syntax, you will receive an error stating "Installation is impossible. Aborting"
+
+Type mkdir /mnt/USB && mount /dev/sdx1 /mnt/USB (replacing x with your actual usb device)
+Type grub-install --force --no-floppy --boot-directory=/mnt/USB/boot /dev/sdx (replacing x with your actual USB device)
+Type cd /mnt/USB/boot/grub (to change directory)
+Type wget pendrivelinux.com/downloads/multibootlinux/grub.cfg (to get the grub.cfg file)
+IV. Adding the Bootable ISO files:
+
+Type cd /mnt/USB (assuming USB is still mounted… else repeat section III. (part 1))
