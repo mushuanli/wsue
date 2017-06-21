@@ -192,6 +192,8 @@ menuentry "Local Windows  (on /dev/sda1)" {
 EOF
 
 5. copy debian live cd to /mnt/USB/iso/debian.iso
-6. install debian on /dev/sdb3, notice, grub2 for usb debian need to install on debian's root partition(/dev/sdb3)
-
+6. install debian on /dev/sdb3, notice:
+  a. grub2 for usb debian need to install on debian's root partition(/dev/sdb3)
+  b. change /etc/fstab use UUID
+  
 now it works, great :)
