@@ -110,20 +110,88 @@ openssl req -x509 -nodes -newkey rsa:2048 -keyout key.pem -out cert.pem -days  3
 
 
 ---------------------------------------------------------------------------------------------
-USB BOOT 
-Type mkfs.vfat -F 32 -n MULTIBOOT /dev/sdx1 (to format the partition as fat32)
-III. Install Grub2 on the USB Flash Drive:
+create USB BOOT and include DEBIAN Live
+1. fdisk to create USB's boot partition, and set as FAT32
+   windows only regornize first partition, so we often set as:
+    /dev/sdb1   fat32  xxG
+    /dev/sdb2   fat32  1G  active
+    /dev/sdb3   ext4
+    
+2. format USB's boot partition
+   mkfs.vfat -F 32 -n MULTIBOOT /dev/sdb2
+   
+3. Install Grub2 on the USB Flash Drive(/dev/sdb2):
+   mkdir /mnt/USB && mount /dev/sdb2 /mnt/USB
+   grub-install --force --no-floppy --boot-directory=/mnt/USB/boot /dev/sdb
+   cd /mnt/USB/boot/grub  
 
-Important Note:
-Old versions of grub used --root-directory=/mnt/USB
-while current versions use --boot-directory=/mnt/USB/boot
+4. set /mnt/USB/boot/grub/grub.cfg, notice, need to change UUID 
+   this file is changed from ( wget pendrivelinux.com/downloads/multibootlinux/grub.cfg ).
+   
+cat << EOF > /mnt/USB/boot/grub/grub.cfg
+# This grub.cfg file was created by Lance http://www.pendrivelinux.com
+# Suggested Entries and the suggestor, if available, will also be noted.
 
-If you use the wrong syntax, you will receive an error stating "Installation is impossible. Aborting"
+set timeout=10
+set default=0
 
-Type mkdir /mnt/USB && mount /dev/sdx1 /mnt/USB (replacing x with your actual usb device)
-Type grub-install --force --no-floppy --boot-directory=/mnt/USB/boot /dev/sdx (replacing x with your actual USB device)
-Type cd /mnt/USB/boot/grub (to change directory)
-Type wget pendrivelinux.com/downloads/multibootlinux/grub.cfg (to get the grub.cfg file)
-IV. Adding the Bootable ISO files:
+#menuentry "USB Linux" {
+#insmod ext4
+#set root=(hd0,5)
+#multiboot /boot/grub/core.img
+#}
 
-Type cd /mnt/USB (assuming USB is still mounted… else repeat section III. (part 1))
+menuentry "Debian on USB" {
+   insmod ext2
+   search --no-floppy --fs-uuid --set=root bfafbe96-9ebd-7b40-a679-ec7d1fcb3490
+   configfile /boot/grub/grub.cfg
+}
+
+
+menuentry "Debian Live 8.4 ISO" {
+set isoname="debian.iso"
+set isopath="/iso"
+set isofile="${isopath}/${isoname}"
+echo "Using ${isoname}..."
+loopback loop $isofile
+linux (loop)/live/vmlinuz boot=live findiso=${isofile} config quiet splash
+initrd (loop)/live/initrd.img
+}
+
+
+menuentry "Debian Live 8.4 ISO safe" {
+ loopback loop /iso/debian.iso
+ linux (loop)/live/vmlinuz boot=live findiso=/iso/debian.iso config memtest noapic noapm nodma nomce nolapic nomodeset nosmp nosplash 
+ initrd (loop)/live/initrd.img
+}
+
+menuentry "Memtest 86+" {
+ linux16 /memtest86+.bin
+}
+
+menuentry "SystemRescueCd" {
+ loopback loop /systemrescuecd.iso
+ linux (loop)/isolinux/rescuecd isoloop=/systemrescuecd.iso setkmap=us docache dostartx
+ initrd (loop)/isolinux/initram.igz
+}
+
+menuentry "Local linux (grub2 install in seperate partition)" {
+   insmod ext2
+   search --no-floppy --set=root --file /grub/grub.cfg
+   configfile /grub/grub.cfg
+}
+
+
+menuentry "Local Windows  (on /dev/sda1)" {
+  insmod part_msdos
+  insmod ntfs
+  search --no-floppy --set=root --file /bootmgr
+  #set root='(hd1,msdos1)'
+  chainloader +1
+}
+EOF
+
+5. copy debian live cd to /mnt/USB/iso/debian.iso
+6. install debian on /dev/sdb3, notice, grub2 for usb debian need to install on debian's root partition(/dev/sdb3)
+
+now it works, great :)
