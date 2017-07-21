@@ -239,3 +239,32 @@ sub parsetree_pushpid{
 }
 
 #-----------------------------------------------------------------------------------------------------------------
+
+# function used to parse strace -f -ff result, it will rename pid file to pid_exitcode_procname_param
+sub strace_getfileinfo(){
+    my @files = grep /\d+$/ ,glob('*.*');
+
+    foreach my $file (@files){
+        my $cmd= qx/grep -w 'execve' $file/;
+        my $ret= qx/grep '+++' $file/;
+            my $pid = 0;
+            $pid=$1 if($file=~m/(\d+)$/);
+
+        if($ret=~m/\+\+\+\s+(.*)\s+\+\+\+/){
+            $ret = $1;
+            $ret=~s/[( )]+/ /g;
+            $ret=~s/\s*killed by\s*//g;
+            $ret=~s/\s*core\s+dumped\s*/_core/g;
+            $ret=~s/\s*exited with\s*//g;
+        }
+        if($cmd=~m/execve\(\"[^"]*?(\w+)\",\s*\[\"[^"]*?\/?(\w+\".*),\s*\[\/\*\s*\d+\s+vars\s+\*\/\]/){
+            $cmd=$2;
+            $cmd=~s/\", \"/ /g;
+            $cmd=~s/\"\]//g;
+            $cmd=~s/[ \/\\()]+/_/g;
+    }
+    qx(mv $file  ${pid}_${ret}_$cmd);
+    }
+}
+
+#-----------------------------------------------------------------------------------------------------------------
