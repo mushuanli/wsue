@@ -10,6 +10,11 @@
 CHROOT_DIR=/home/build/centos
 SCHROOT_NAME=c6
 SCHROOT_DESC='Centos 6 (amd64)'
+CENTOS_BASE=centos-release-6-9.el6.12.3.x86_64.rpm
+
+if [ !-f /etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-6 ] ; then
+mkdir -p /etc/pki/rpm-gpg/ && cd /etc/pki/rpm-gpg/ && wget http://mirrors.163.com/centos/RPM-GPG-KEY-CentOS-6 && rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-6 
+fi
 
 #   1.  recreate rpm directory
 rm -rf  $CHROOT_DIR
@@ -19,20 +24,20 @@ mkdir -p $CHROOT_DIR/var/lib/rpm
 rpm --rebuilddb --root=$CHROOT_DIR
   
 #   3.  download system install package
-if [ -f centos-release-6-7.el6.centos.12.3.x86_64.rpm ] ; then
-    echo "centos-release-6-7.el6.centos.12.3.x86_64.rpm file exist, skip download"
+if [ -f $CENTOS_BASE ] ; then
+    echo "$CENTOS_BASE file exist, skip download"
 else
-    wget http://mirrors.163.com/centos/6.7/os/x86_64/Packages/centos-release-6-7.el6.centos.12.3.x86_64.rpm
+    wget http://mirrors.163.com/centos/6.9/os/x86_64/Packages/$CENTOS_BASE
 fi
 
 echo "install base system"
 #   4.  install base system
-rpm -ivh --root=$CHROOT_DIR --nodeps centos-release-6-7.el6.centos.12.3.x86_64.rpm
+rpm -ivh --root=$CHROOT_DIR --nodeps $CENTOS_BASE
   
 echo "install rpm-build yum,run command:"
 echo "yum --installroot=$CHROOT_DIR install -y rpm-build yum"
 #   5.  install rpmbuild/yum to dest system
-yum --installroot=$CHROOT_DIR install -y rpm-build yum
+yum --installroot=$CHROOT_DIR install -y rpm-build yum bc net-tools 
   
 echo "prepare chroot directory"
 #   6.  prepare chroot system
@@ -40,6 +45,8 @@ mkdir -p $CHROOT_DIR/proc
 mkdir -p $CHROOT_DIR/dev
 mkdir -p $CHROOT_DIR/sys
 cp /etc/resolv.conf $CHROOT_DIR/etc/
+echo "if [ -f ~/.bashrc ]; then . ~/.bashrc; fi" > $CHROOT_DIR/root/.bash_profile
+echo "PS1=\'\033[1;93;45m${debian_chroot:+($debian_chroot)}\033[0m\[\033[01;32m\]\u@\[\033[01;34m\]\w\[\033[00m\]\$ \'" >> $CHROOT_DIR/root/.bashrc
   
 #   7.  now you can chroot,but if you use chroot command, you need to mount --rbind /proc /sys/ /dev
 #       or you can use schroot -c $SCHROOT_NAME to run
@@ -63,6 +70,4 @@ type=directory
 aliases=unstable,default
 EOF
 ) >> /etc/schroot/schroot.conf
-echo "if [ -f ~/.bashrc ]; then . ~/.bashrc; fi" > $CHROOT_DIR/root/.bash_profile
-echo 'PS1=\'\033[1;93;45m${debian_chroot:+($debian_chroot)}\033[0m\[\033[01;32m\]\u@\[\033[01;34m\]\w\[\033[00m\]\$ \'' >> $CHROOT_DIR/root/.bashrc
 "
