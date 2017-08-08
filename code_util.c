@@ -70,6 +70,37 @@ void RainLog(const char *fmt,...)
 }
 
 
+#if (defined __ANDROID__) && (!defined GATEWAY_VIRDROID)
+
+#include <utils/CallStack.h>
+#endif
+
+void RmxTraceBacktrace(const char * fmt,...)
+{
+    char cache[1024];
+    va_list arg_ptr;
+    va_start(arg_ptr, fmt);
+    int offset =
+        vsnprintf(cache , sizeof(cache) - 1 , fmt, arg_ptr);
+    va_end(arg_ptr);
+    cache[offset] = 0;
+    RmxTraceLog2File("WARN",__FILE__,__func__,__LINE__,cache);
+
+#if (defined __ANDROID__) && (!defined GATEWAY_VIRDROID)
+    android::CallStack cs;
+    cs.update(4);
+#ifdef TEST_LOGTOFILE
+    if( sRmxUdpLogfd >= 0 ){
+        cs.dump(sRmxUdpLogfd,4,"    ");
+        return ;
+    }
+#endif
+    cs.log("RMXUDP",ANDROID_LOG_INFO,"backtrace: ");
+
+    return ;
+#endif
+}
+
 #define RAIN_DBGTRACE(fmt,arg...)       RainTrace("[%s:%d] "fmt,__func__,__LINE__,##arg)
 void RainTrace(const char *fmt,...) __attribute__ ((format (gnu_printf, 1, 2)));
 #ifdef ANDROID
