@@ -2088,3 +2088,31 @@ static    int gcmenccnt = 0;
 
         return true;
     }
+
+
+/*------------------------------------------------------------------------------------------------------------------
+ *
+ *  CHECK KERNEL VERSION
+ *
+ * ---------------------------------------------------------------------------------------------------------------*/
+
+#include <unistd.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdio.h>
+
+int is_kernel_ver(const char*verstr)
+{
+  int fd = open("/proc/version",O_RDONLY);
+  if( fd >= 0 ){
+     char buf[32];
+     int len = read(fd,buf,31);
+     close(fd);
+     if( len > 0 ){
+       buf[len] = 0;
+       return strstr(buf,verstr)? 1:0;
+     }
+  }
+  return -1;
+}
