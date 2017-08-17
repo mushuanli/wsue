@@ -7,7 +7,7 @@
 #   2.  wget http://mirrors.163.com/centos/RPM-GPG-KEY-CentOS-6 
 #   3.  rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-6 
 #   
-CHROOT_DIR=/home/build/centos
+CHROOT_DIR=/home/centos
 SCHROOT_NAME=c6
 SCHROOT_DESC='Centos 6 (amd64)'
 CENTOS_BASE=centos-release-6-9.el6.12.3.x86_64.rpm
