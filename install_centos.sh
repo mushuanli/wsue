@@ -37,7 +37,7 @@ rpm -ivh --root=$CHROOT_DIR --nodeps $CENTOS_BASE
 echo "install rpm-build yum,run command:"
 echo "yum --installroot=$CHROOT_DIR install -y rpm-build yum"
 #   5.  install rpmbuild/yum to dest system
-yum --installroot=$CHROOT_DIR install -y rpm-build yum bc net-tools wget
+yum --installroot=$CHROOT_DIR install -y rpm-build yum bc net-tools wget vim
   
 echo "prepare chroot directory"
 #   6.  prepare chroot system
