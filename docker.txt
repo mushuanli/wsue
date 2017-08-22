@@ -16,6 +16,228 @@ apt-get install \
    apt-get update
    apt-get install docker-ce
 
+-------------------------------------------------------------------
+使用:
+当使用新内核时, centos6 需要主机内核选项添加:  "vsyscall=emulate" 不然会app运行错误(dmesg 看到 segment fault), 因为kernel 的vsyscall 增加安全模式，与旧的glibc api不兼容
 
-     
-     
+根据目录(例如一个可运行版本)创建镜像:
+    rm -rf tmp/* var/cache/* var/run/* root/* root/.[^b]*
+    tar --numeric-owner --exclude=/proc --exclude=/sys -cvf centos6-base.tar *
+    cat centos6-base.tar | docker import - vmibuild
+确认已经导入:
+    docker image ls
+运行:
+    docker run -it --rm -v /home/build/rain/:/builddir -v /home/build/rain/tmp/:/var/tmp vmibuild /bin/bash
+定位运行异常，例如容器无法启动:
+    docker events &
+    然后运行上面命令，或是使用 docker ps -a 观察容器的退出状态，及使用 dmesg 看看是否有内核异常
+    
+确认容器已经清除:
+    docker ps -a
+
+删除容器: docker rm <容器id>
+删除镜像: docker rmi <镜像名,例如vmibuild>
+
+
+-----------------------------------------------------------------------------------------------------------------------
+docker = lxc + aufs
+利用lxc的资源分组，及aufs 的多层次机制提供应用一个升级版本的 chroot 环境
+减少软件部署时的的环境依赖和冲突
+
+三个组成部分
+     Image(镜像):          一个文件系统快照(提供类似git的管理机制)，使用分层机制，同时一个文件可能在上层不可见，但是实际还存在
+     Container(容器):     一个正在运行的Image  
+     Resp(仓库,可选):     一个管理Image的地方，提供多个server 从这里下载Image
+
+
+安装:
+    新的发行版本安装 docker.io 包,官方建议 ubuntu
+
+
+文件系统：
+    在 Ubuntu/Debian 上有 UnionFS 可以使用，如 aufs 或者 overlay2 ，而 CentOS 和 RHEL 的内核中没有相关驱动。
+    因此对于这类系统，一般使用 devicemapper 驱动利用 LVM 的一些机制来模拟分层存储。但是性能和空间成问题。
+    所以对于 CentOS/RHEL 的用户来说，在没有办法使用 UnionFS 的情况下，一定 要配置 direct-lvm 给 devicemapper ，无论是为了性能、稳定性还是空间利 用率。
+
+
+运行：
+     下载镜像:     docker pull ubuntu:1404     -  [Docker Registry地址]<仓库名>:<标签>
+     运行：          docker run -it --rm ubuntu:14.04 bash
+                          参数: -i: 交互模式  -t 打开终端   --rm 容器退出后立即删除
+                        docker run --name webserver -d -p 80:80 nginx
+                          参数: 以映像 nginx 运行一个容器名为 webserver
+                          然后通过：  docker exec -it webserver bash 进入 容器
+                          比对容器相对映像的改变： docker diff webserver
+                          保存容器对映像的改变：(慎用，因为可能保存垃圾信息，尽量使用 dockerfiles )
+                                docker commit \ --author "Tao Wang " \ --message "修改了默认网页" \ webserver \ nginx:v2
+                                参数:  [选项] <容器ID或容器名> [<仓库名>[:<标签>]]
+                          察看映像的修改历史:   docker history nginx:v2
+
+     列出已经下载的映像： docker images
+    保存、恢复映像: docker save/load
+                        docker save alpine | gzip > alpine-latest.tar.gz
+                        docker load -i alpine-latest.tar.gz
+                        docker save <镜像名> | bzip2 | pv | ssh <用户名>@<主机名> 'cat | do cker load
+    删除本地镜像：  docker rmi [选项] <镜像1> [<镜像2> ...]
+                        删除时先去除引用，最后没引用才会删除映像
+                       如果有容器依赖，那不可以删除镜像，避免异常
+                        删除虚映像: docker rmi $(docker images -q -f dangling=true)
+                       根据仓库名删除：  docker rmi $(docker images -q redis)
+                       删除mongo:3.2 之前的版本： docker rmi $(docker images -q -f before=mongo:3.2)
+
+
+
+Dockerfile: 是一个文本文件(文件名固定为Dockerfile)，包含docker指令，用于创建镜像
+     指令:
+           FROM  基础镜像名
+                     指定基础镜像，或是默认空白镜像  scratch
+           RUN  shell命令或是  ["可执行文件", "参数1", "参数2"]
+                     每个RUN会创建一层镜像，所以应该尽量少的 RUN, 并且删除临时文件
+           COPY 上下文目录的源路径 目的路径            # 会保存完整的文件属性
+           ADD   上下文目录的源路径或URL 目的路径  # 带自动解压功能，或是下载url, 但不建议使用
+           CMD   <命令> |  ["可执行文件", "参数1", "参数2"...]
+                     容器启动命令，例子：
+                        CMD echo $HOME
+                        CMD [ "sh", "-c", "echo $HOME" ]
+                     可以被 docker -i 代替,
+                     另外一个是，当CMD执行对象退出，那容器也退出。所以执行的进程必须前台执行
+          ENTRYPOINT <命令> |  ["可执行文件", "参数1", "参数2"...]
+                      跟CMD的不同是，容器运行时参数会传给entrypoint当参数
+          ENV    key value | key1=value1 key2=value2 
+                    设置环境变量
+          ARG key=value 
+                    设置构建时环境变量, 环境变量在运行时不起作用. 但是注意不要放隐私信息例如密码，因为这些信息可以使用docker history 查看
+          VOLUMN  ["<路径1>", "<路径2>"...]
+                   定义匿名卷，运行容器时，往这些路径写入不会写到容器存储层
+                   运行时可以在参数中代替，例如
+                        VOLUME /data
+                        docker run -d -v mydata:/data xxxx
+          EXPOSE <端口1> [<端口2>...]
+                   声明容器打算使用的端口
+          WORKDIR <工作目录路径>
+                  切换后面操作的工作目录
+          USER <用户名>
+                  切换后面操作的用户名, 临时切换用户可以使用gosu
+          HEALTHCHECK [选项] CMD <命令>
+                 通过命令检查容器是否健康
+          ONBUILD <其它指令>
+                 创建本镜像时不执行，以本镜像创建其他镜像才执行
+
+
+
+    创建镜像:
+            docker build [选项] <上下文路径/URL/->
+            例子：   docker build -t nginx:v3 .   表示使用当前目录的Dockerfile 建立nginx:v3镜像  . 表示是上下文目录
+            
+            其他创建方式: 从 git url, 或是从 tar.bz2 包
+
+
+
+                           容器
+
+启动(新建容器)：  docker run
+        流程如下：
+
+	1.  检查本地是否存在指定的镜像，不存在就从公有仓库下载
+	2. 启动 101 利用镜像创建并启动一个容器
+	3. 分配一个文件系统，并在只读的镜像层外面挂载一层可读写层
+	4. 从宿主主机配置的网桥接口中桥接一个虚拟接口到容器中去
+	5. 从地址池配置一个 ip 地址给容器
+	6. 执行用户指定的应用程序
+	7. 执行完毕后容器被终止
+
+
+
+启动（已终止容器）： docker start
+后台运行:  -d
+     可以使用 docker logs <id> 观察输出日志
+查看运行状态:  docker ps [-a]
+终止:  docker stop
+重启: docker restart <id>
+进入容器： attach 
+     但是进入同一容器的所有窗口都显示相同内容，并且都同时阻塞
+容器快照： docker export | import
+     sudo docker export 7691a814370e > ubuntu.tar :导出容器快照到文件
+     sudo docker import http://example.com/exampleimage.tgz example/ imagerepo   从容器快照文件导入为映像
+     与映像快照不同的是，容器快照仅有当前快照状态，无历史信息或元数据状态
+删除容器:  docker rm
+清除所有处于终止状态人容器：  docker rm $(docker ps -a -q)
+
+
+仓库
+概念：  集中存放镜像的地方
+            官方仓库是 Docker Hub
+登录:    docker login
+搜索:    docker search 
+下载:    docker pull
+自动创建: 在Docker Hub 中配置
+
+私有仓库: 使用docker-registry创建本地的仓库, 可以通过docker运行: 
+           sudo docker run -d -p 5000:5000 -v /home/user/registry-conf:/r egistry-conf -e DOCKER_REGISTRY_CONFIG=/registry-conf/config.yml registry
+       或是安装本地：
+           $ sudo pip install docker-registry
+       安装好后，可以通过下面命令把映像推到私有仓库:
+             sudo docker tag ba58 192.168.7.26:5000/test
+       然后使用命令察看仓库的映像：
+             curl http://192.168.7.26:5000/v1/search
+       其他机器使用命令下载镜像：
+             sudo docker pull 192.168.7.26:5000/test
+
+
+               数据管理
+容器中管理数据主要有两种方式：
+    数据卷： 供一个或多个容器使用的特殊目录(或文件)，绕过UFS，可以提供很多有用的特性：
+              数据卷可以在容器间共享和重用
+              对数据卷的修改会立马生效
+              对数据卷的更新，不会影响镜像
+              数据卷会一直存在，即使容器被删除
+         - 类似Linux下对目录或文件进行mount
+         查看数据卷信息:   docker inspect <容器名>
+       给容器挂载数据卷: docker run -v <本地目录>:<数据卷目录>[:ro] ...
+       删除卷:            docker rm -v 
+
+    数据卷容器： 是一个正常容器，适用于有一些数据需要在容器间共享的情况。
+         步骤：
+
+	1. 建立数据卷容器:sudo docker run -d -v /dbdata --name dbdata training/postgres
+	2. 在其他容器间使用 --volumes-from 挂载dabata容器中的数据卷 
+sudo docker run -d --volumes-from dbdata --name db1 training/p
+ostgres 
+echo Data-only container for postgres
+sudo docker run -d --volumes-from dbdata --name db2 training/p
+ostgres
+还可以级联： sudo docker run -d --name db3 --volumes-from db1 training/post
+gres
+
+	3. 数据卷容器可以用来备份，恢复，迁移数据卷
+备份： sudo docker run --volumes-from dbdata -v $(pwd):/backup ubuntu
+tar cvf /backup/backup.tar /dbdata
+恢复： 先建立一个有空数据卷的容器： 
+sudo docker run -v /dbdata --name dbdata2 ubuntu /bin/bash
+再挂载后恢复： 
+sudo docker run --volumes-from dbdata2 -v $(pwd):/backup busyb
+ox tar xvf
+/backup/backup.tar
+
+	4. 
+
+
+
+
+网络功能
+
+宿主机端口映射：
+使用 -P 会随机把 49000-49900 映射到内部开放网络端口
+-p 指定要映射的端口  hostPort:containerPort | ip::containerPort |hostPort:containerPort
+docker port 察看端口映射关系
+
+容器间连接:
+建立连接关系：
+  docker  run --link <要链接到的其他容器名>:<连接别名>
+建立后两个容器间建立了一个安全隧道，而且不用映射他们的端口到宿主主机上，
+映射关系出现在环境变量和/etc/hosts文件中
+
+高级网络配置：
+     docker启动时，会自动在主机上创建一个docker0 虚拟网桥，网桥的IP地址段是一段未占用的私有网段
+     没建立一个容器，就会建立一对虚拟网卡veth pair, 一端连接容器(可见为eth0)，另一端连接docker0网桥
+
