@@ -71,3 +71,24 @@ aliases=unstable,default
 EOF
 ) >> /etc/schroot/schroot.conf
 "
+
+
+------------------------------------------------------------------------------
+#  kickstart show dialog
+
+%pre
+curTTY=`tty`
+exec < $curTTY > $curTTY 2> $curTTY
+clear
+
+DATE=`date '+%Y-%m-%d %H:%M:%S'`
+echo $DATE
+whiptail --title "Check BIOS Clock Dialog" --yesno "Current BIOS clock is :\n    $DATE\nIf it wrong,  You need to reboot to change it before install." 24 78 --yes-button "Continue" --no-button "Reboot"
+if [ $? = 0 ] ; then
+    echo "Will reboot..."
+    reboot
+fi
+
+
+%end
+
