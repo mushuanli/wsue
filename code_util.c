@@ -2116,3 +2116,284 @@ int is_kernel_ver(const char*verstr)
   }
   return -1;
 }
+
+
+
+/*------------------------------------------------------------------------------------------------------------------
+ *
+ *  WEBSOCK FUNCTION:   websock_init/websock_run/websock_release
+ *
+ * ---------------------------------------------------------------------------------------------------------------*/
+#ifndef TEXAS_UTIL_H_
+#define TEXAS_UTIL_H_
+
+/*
+ * @rx_buffer_size: if you want atomic frames delivered to the callback, you
+ *              should set this to the size of the biggest legal frame that
+ *              you support.  If the frame size is exceeded, there is no
+ *              error, but the buffer will spill to the user callback when
+ *              full, which you can detect by using
+ *              lws_remaining_packet_payload().  Notice that you
+ *              just talk about frame size here, the LWS_PRE
+ *              and post-padding are automatically also allocated on top.
+ */
+#define WEBSOCK_RX_BUFFER_SIZE_MAX  (30*1024)
+typedef void* WEBSOCK_HANDLE;
+
+struct websock_session;
+/**
+ * 通用回调函数签名
+ *      oninit(wsi,texas_session,NULL,0)
+ *      onread(wsi,texas_session,in,len)
+ *      onwrite(wsi,texas_session,&session->writebuf[LWS_PRE],WEBSOCK_RX_BUFFER_SIZE_MAX) // return writebuf len
+ *      onrelease(wsi,texas_session,NULL,0)
+ *  返回: 0 表示成功，<0 表示错误退出
+ */
+typedef int (*LWS_CALLBACK)( struct lws *wsi, struct websock_session* session, void *in, size_t len );
+
+struct websock_session{
+    int             isinit;
+    int             isexit;
+    struct lws_protocols protocols[2];
+
+    char            writebuf[LWS_PRE + WEBSOCK_RX_BUFFER_SIZE_MAX];
+
+    //  user define callback function and data
+    LWS_CALLBACK    oninit;
+    LWS_CALLBACK    onread;
+    LWS_CALLBACK    onwrite;
+    LWS_CALLBACK    onrelease;
+    void*           user;
+};
+
+
+
+int websock_init(WEBSOCK_HANDLE *handle,
+        LWS_CALLBACK    oninit,
+        LWS_CALLBACK    onread,
+        LWS_CALLBACK    onwrite,
+        LWS_CALLBACK    onrelease,
+        void*           user_data);
+int websock_run(WEBSOCK_HANDLE handle,const char* serv,int port);
+int websock_release(WEBSOCK_HANDLE handle);
+
+#endif
+#include <libwebsockets.h>
+#include <signal.h>
+ 
+#include "tesax_util.h"
+
+
+static int callback_wrap( struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len );
+
+static volatile int exit_sig = 0;
+static const struct lws_protocols protocols_template = {
+    //协议名称，协议回调，接收缓冲区大小
+    "", callback_wrap, sizeof( struct websock_session ), WEBSOCK_RX_BUFFER_SIZE_MAX,
+};
+
+int websock_init(WEBSOCK_HANDLE *handle,
+        LWS_CALLBACK    oninit,
+        LWS_CALLBACK    onread,
+        LWS_CALLBACK    onwrite,
+        LWS_CALLBACK    onrelease,
+        void*           user_data)
+{
+    struct websock_session  *session    = malloc(sizeof(struct websock_session));
+    memset(session,0,sizeof(struct websock_session));
+
+    memcpy(&session->protocols[0],&protocols_template,sizeof(protocols_template));
+
+    session->oninit     = oninit;
+    session->onread     = onread;
+    session->onwrite    = onwrite;
+    session->onrelease  = onrelease;
+    session->user       = user_data;
+
+    *handle             = session;
+    return 0;
+}
+
+ 
+static void sighdl( int sig ) {
+    lwsl_notice( "%d traped", sig );
+    exit_sig = 1;
+}
+
+static struct lws_context* init_lwscontext(struct lws_protocols *protocols)
+{
+    // 用于创建vhost或者context的参数
+    struct lws_context_creation_info ctx_info = { 0 };
+    ctx_info.port       = CONTEXT_PORT_NO_LISTEN;
+    ctx_info.iface      = NULL;
+    ctx_info.protocols  = protocols;
+    ctx_info.gid        = -1;
+    ctx_info.uid        = -1;
+ 
+    // 创建一个WebSocket处理器
+    return lws_create_context( &ctx_info );
+}
+
+int websock_run(WEBSOCK_HANDLE handle,const char* address,int port)
+{
+    struct websock_session  *session    = (struct websock_session  *)handle;
+    char                    addr_port[256] = { 0 };
+    struct lws_context *context         = init_lwscontext( session->protocols );
+    struct lws_client_connect_info      conn_info = { 0 };
+
+    signal( SIGTERM, sighdl );
+    
+    sprintf( addr_port, "%s:%u", address, port & 65535 );
+ 
+    // 客户端连接参数
+    conn_info.context                   = context;
+    conn_info.address                   = address;
+    conn_info.port                      = port;
+    conn_info.ssl_connection            = 0;
+    conn_info.path                      = "/";
+    conn_info.host                      = addr_port;
+    conn_info.origin                    = addr_port;
+    conn_info.protocol                  = session->protocols[0].name;
+    conn_info.userdata                  = session;
+ 
+    // 下面的调用触发LWS_CALLBACK_PROTOCOL_INIT事件
+    // 创建一个客户端连接
+    struct lws *wsi = lws_client_connect_via_info( &conn_info );
+    while ( !(exit_sig ||session->isexit) ) {
+        // 执行一次事件循环（Poll），最长等待1000毫秒
+        lws_service( context, 1000 );
+        /**
+         * 下面的调用的意义是：当连接可以接受新数据时，触发一次WRITEABLE事件回调
+         * 当连接正在后台发送数据时，它不能接受新的数据写入请求，所有WRITEABLE事件回调不会执行
+         */
+        lws_callback_on_writable( wsi );
+    }
+    // 销毁上下文对象
+    lws_context_destroy( context );
+ 
+    return 0;
+}
+
+
+int websock_release(WEBSOCK_HANDLE handle)
+{
+    struct websock_session  *session    = (struct websock_session  *)handle;
+    if( session->isinit && session->onrelease ){
+        session->onrelease(NULL,session,NULL,0);
+        session->isinit = 0;
+    }
+    free(session);
+}
+
+
+ 
+
+ 
+/**
+ * 某个协议下的连接发生事件时，执行的回调函数
+ *
+ * wsi：指向WebSocket实例的指针
+ * reason：导致回调的事件
+ * user 库为每个WebSocket会话分配的内存空间
+ * in 某些事件使用此参数，作为传入数据的指针
+ * len 某些事件使用此参数，说明传入数据的长度
+ */
+int callback_wrap( struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len ) {
+    struct websock_session *session = (struct websock_session *) user;
+    int                     ret     = 0;
+    switch( reason ){
+	case LWS_CALLBACK_GET_THREAD_ID:
+	case LWS_CALLBACK_ADD_POLL_FD:
+	case LWS_CALLBACK_DEL_POLL_FD:
+	case LWS_CALLBACK_CHANGE_MODE_POLL_FD:
+	case LWS_CALLBACK_LOCK_POLL:
+	case LWS_CALLBACK_UNLOCK_POLL:
+            return 0;
+        default:
+	    lwsl_notice( "recv reason %d\n",reason );
+	    break;
+    }
+
+    switch ( reason ) {
+        case LWS_CALLBACK_CLIENT_ESTABLISHED:   // 连接到服务器后的回调
+            lwsl_notice( "Connected to server\n" );
+            if( session->oninit ){
+                ret = session->oninit(wsi,session,NULL,0);
+                if( ret < 0 ){
+                    lwsl_notice("oninit error :%d\n",ret);                    
+                    session->isexit = 1;
+                }
+                else{
+                    session->isinit = 1;
+                }
+            }
+            break;
+
+        case LWS_CALLBACK_CLIENT_RECEIVE:       // 接收到服务器数据后的回调，数据为in，其长度为len
+            lwsl_notice( "Rx: %s\n", (char *) in );
+            if( session->onread ){
+                ret = session->onread(wsi,session,in,len);
+               if( ret < 0 ){
+                    lwsl_notice("onread error :%d\n",ret);                    
+                    session->isexit = 1;
+                }
+            }
+            break;
+
+        case LWS_CALLBACK_CLIENT_WRITEABLE:     // 当此客户端可以发送数据时的回调
+            if( session->onread ){
+                memset( session->writebuf, 0,LWS_PRE);                
+                ret = session->onwrite(wsi,session,&session->writebuf[LWS_PRE],WEBSOCK_RX_BUFFER_SIZE_MAX);
+                if( ret < 0 ){
+                    lwsl_notice("onwrite error :%d\n",ret);                    
+                    session->isexit = 1;
+                }
+                else if( ret > 0 ){
+                    lwsl_notice( "Tx: %s\n", &session->writebuf[LWS_PRE] );                   
+                    lws_write( wsi, &session->writebuf[LWS_PRE], ret, LWS_WRITE_TEXT );                   
+                }
+            }
+
+            break;
+
+        case LWS_CALLBACK_CLIENT_CONNECTION_ERROR:
+        case LWS_CALLBACK_WSI_DESTROY:
+            lwsl_notice("recv exit signal\n");
+            session->isexit = 1;
+            if( session->isinit && session->onrelease ){
+                ret = session->onrelease(wsi,session,NULL,0);
+                session->isinit = 0;
+                if( ret < 0 ){
+                    lwsl_notice("onrelease error :%d\n",ret);                    
+                }
+            }
+            break;
+
+        default:
+            break;
+    }
+    return 0;
+}
+ 
+ 
+
+
+
+
+static int test_onwrite( struct lws *wsi, struct websock_session* session, void *in, size_t len )
+{
+    char*   p = (char *)in;
+    return sprintf(p,"hello workd\n");
+}
+
+int main() {
+    WEBSOCK_HANDLE  handle  = NULL;
+    int             ret     = websock_init(&handle,NULL,NULL,NULL,NULL,NULL);
+    if( ret != 0 )
+        return 1;
+
+    ret = websock_run(handle,"192.168.0.89",80);
+    ret = websock_release(handle);
+
+    return 0;
+}
