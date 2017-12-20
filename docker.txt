@@ -22,6 +22,8 @@ apt-get install \
 
 根据目录(例如一个可运行版本)创建镜像:
     rm -rf tmp/* var/cache/* var/run/* root/* root/.[^b]*
+      tar --numeric-owner --exclude={proc,sys,tmp,vmlinuz,initrd.img} --exclude=var/{backups,cache,local,lock,log,mail,opt,run,spool,tmp}/* -cvf /home/build/rain/tmp/ubuntu1404.tar *
+
     tar --numeric-owner --exclude=/proc --exclude=/sys -cvf centos6-base.tar *
     cat centos6-base.tar | docker import - vmibuild
 确认已经导入:
