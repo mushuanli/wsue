@@ -27,6 +27,8 @@ apt-get install \
       tar -f ../ubuntu1404.tar --delete boot/
     tar --numeric-owner --exclude=/proc --exclude=/sys -cvf centos6-base.tar *
     cat centos6-base.tar | docker import - vmibuild
+    replace:  tar rf ../ubuntu1404.tar root/
+
 确认已经导入:
     docker image ls
 运行:
