@@ -41,9 +41,9 @@ my $bin_genisoimage     ="/usr/bin/genisoimage";
 my $bin_checkisomd5     ="/usr/bin/checkisomd5";
 
 my %ftpinfo             = (
-                    host => '10.204.16.2',
-                    usr  => 'su-tmvmi6',
-                    pass => 'TMVMI666',
+                    host => '16.16.16.16',
+                    usr  => 'sususu',
+                    pass => 'sususu',
                     parent => '/build_selfservice/TMVMI/6.0',
                     files => [
                         # module dir        sub dir1           file regrex1,  can include many sub dir and file regrex pair
