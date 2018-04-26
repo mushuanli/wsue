@@ -9,10 +9,11 @@
 #   3.  convert file handle to filename, and put it to "$ARGV[1]/fd"
 #   4.  use clean command to filter "$ARGV[1]/fd"'s all file, and output to "$ARGV[1]/fd/clear/"
 use Cwd;
+use feature switch;
 use strict;
-use POSIX qw(tmpnam);
+#use POSIX qw(tmpnam);
 
-#
+#   
 #   configure
 #
 #   1.  only trace these process and it's child process
@@ -20,16 +21,16 @@ my  @config_parentprocname=('libvirtd','libvirt_lxc');
 
 #   3.  will merge one process's all tid trace file into single file, filename format:
 #my  $cleancmd=q{ egrep '(sendto|send|recv|recvfrom|read|write|connect|bind|listen|accept|execve|fork|vfork|clone)\\(' | grep -vw tasks | grep -vw binder };
-my  $cleancmd=q{ egrep -w '(sendto|send|recv|recvfrom|inotify|unlinkat|read|write|connect|bind|listen|accept|accept4|mount|umount2|execve|fork|vfork|kill|clone|token)' | grep -vw tasks | grep -vw binder };
+my  $cleancmd=q{ egrep -w '(sendto|send|recv|recvfrom|inotify|unlinkat|read|write|connect|bind|listen|accept|accept4|mount|umount2|execve|fork|vfork|kill|clone|token)' | grep -vw tasks | grep -vw binder | grep -vw lib };
 my  $keycmd=q{ egrep -w '(SENDTO|RECVFROM|READ|WRITE|UNLINK|CLONE|EXEC|ACCEPT|LISTEN|token|MOUNT|UMOUNT)' };
 
 
-#
+#   
 #   help
 #
-print "strace_parse.pl pstree_file strace_file\n";
+print "strace_parse.pl pstree.log run.log\n";
 print "\tuse to parse this command:\n";
-print "\t\t".'(sniff -i eth0 -P TCP -w 050413.cap  &); strace -s 160 -f -y -yy -tt  -p "`pidof libvirtd`" -o ;pkill -SIGINT sniff ; pstree -p >tree'."\n";
+print "\t\t".'(sniff -i eth0 -P TCP -w 050413.cap  &); strace -s 160 -f -y -yy -tt  -p "`pidof libvirtd`" -o run.log;pkill -SIGINT sniff ; pstree -p >pstree.log'."\n";
 
 die "pstree_file not found \n" if (! -f $ARGV[0]);
 die "strace_file not found \n" if (! -f $ARGV[1]);
@@ -46,7 +47,7 @@ my $tmpname2  = "tmp2_$ARGV[1]";
 my $keyfname  = "key_$ARGV[1]";
 
 
-genoutput_mergesyscall($ARGV[1],$tmpname2);
+genoutput_mergesyscall($ARGV[1],$tmpname2,$pidhash);
 system( " cat $tmpname2 |$cleancmd > $tmpname");
 
 my $sockmap = genoutput_getsocketmap($tmpname);
@@ -54,7 +55,9 @@ genoutput_getcleanfile($tmpname,$cleanname,$pidhash,$sockmap);
 unlink($tmpname);
 system( " cat $cleanname |$keycmd > $keyfname");
 
-#   replace pid to
+#   replace pid to 
+#
+genoutput_replacepids($tmpname2,$pidhash);
 unlink($tmpname2);
 
 
@@ -67,9 +70,23 @@ unlink($tmpname2);
 
 
 
-
 sub genoutput_replacepids{
-    my ($iname,$pids) = @_;
+    my ($inname,$pidhash) = @_;
+    my $outname = "$inname.tmp";
+    open (my $fin,'<',$inname) or die "open file $inname to parse fd fail\n";
+    open (my $fout,'>',$outname) or die "open file $outname to write fd fail\n";
+    while( my $line = <$fin> ){
+        next if($line!~m/^(\d+)\s+(\d{2}:\d{2}:\d{2}\.\d{6})\s+(\w+)(.*)$/);
+        if($line=~m/^(\d+)\s+(.*)/){
+            print $fout "$$pidhash{$1}<$1>\t$2\n";
+        }
+        else{
+            print $fout "$line";
+        }
+    }
+
+    close $fin;
+    close $fout;
 }
 
 sub genoutput_mergesyscall{
@@ -77,26 +94,74 @@ sub genoutput_mergesyscall{
     open (my $fin,'<',$inname) or die "open file $inname to parse fd fail\n";
     open (my $fout,'>',$outname) or die "open file $outname to write fd fail\n";
 
+    my %tidhash;
     my %res;
     while( my $line = <$fin> ){
         if( $line=~m/^\s*(\d+)(\s+\d+:\d+:\d+\.\d+\s+)(.*)\s+<unfinished ...>\s*$/ ){
             $res{$1}=$3;
-            print $fout "$1$2\n";
+            #print $fout "$1$2\n";
             #print "===$res{$1}\n";
             next;
         }
-        else{
-            if( $line=~m/^\s*(\d+)(\s+\d+:\d+:\d+\.\d+\s+)<...\s+\w+\s+resumed>\s*(.*)$/ ){
-                if( $res{$1} ){
-                    print $fout "$1$2$res{$1}$3\n";
-                    #print "=+=$1$2$res{$1}$3\n";
-                    undef $res{$1};
-                    next;
-                }
-            }
+
+        if( $line=~m/^\s*(\d+)(\s+\d+:\d+:\d+\.\d+\s+)<...\s+\w+\s+resumed>\s*(.*?)\s*$/ ){
+            $line = "$1$2$res{$1}$3" if( $res{$1} );
+            undef $res{$1};
         }
 
-        print $fout "$line";
+        if($line!~m/(\d+)(\s+\d+:\d+:\d+\.\d+\s+)(\w+)(.*) = (-?\d+.*)/){
+            print $fout "$line";
+            next;
+        }
+
+        my ($tid,$func,$body,$ret) = ($1,$3,$4,$5);
+        my $write = 1;
+        chomp($tid);
+        chomp($ret);
+        given($func){
+            when (/^(clock_gettime|mprotect)$/) { 
+                #print "clock=$body=$ret=\n";
+                $write = 0 if ($ret eq '0'); 
+            }
+            when (/^(openat|faccessat|fstatat64)$/) { 
+                #print "=$body=$ret=\n" if($ret == 0);
+                if(($body=~m/\(AT_FDCWD, \"\/vendor\//) && ($ret =~m/-1 ENOENT/) ){
+                    #print "=$body=$ret=\n";
+                    $write = 0;
+                }
+            }
+            when (/^gettid$/)            { 
+                if(($ret == $tid) || ( defined $tidhash{$tid} ) ){
+                    #print "eq gettidr=$tid=-=$ret=-=$tidhash{$tid}=\n" ;
+                    $write = 0;
+                }
+                else{
+                    $tidhash{$tid} = $ret;
+                    $$pidhash{$tid} = $$pidhash{$ret} if ( defined $$pidhash{$ret});
+                }
+            }
+
+            when (/^execve$/) {
+                $$pidhash{$tid} = $1 if($body=~m/^\("[^"]*?(\w+)"/);
+            }
+
+            when (/^clone$/) {
+                if( $body=~m/CLONE_THREAD/ ){
+                    $$pidhash{$ret} = $$pidhash{$tid} if($$pidhash{$tid});
+                }
+            }
+
+            default {}
+        }
+
+        if($write){
+            print $fout "$line\n";
+        }
+        else{
+            #print "DEL  =$line=\n";
+        }
+        #print "=+=$1$2$res{$1}$3\n";
+        next;
     }
 
     close($fin);
@@ -120,7 +185,7 @@ sub genoutput_getsocketmap{
         else{
             die "find unknown unix socket:\n\t $line\n";
         }
-
+        
         #print "$name - [$value] \n";
         if( $value=~m/\/var\/run\/nscd\/socket/ ){
             $value = "nscd_socket";
@@ -179,7 +244,7 @@ sub parseline{
     if($line=~m/^\s*clone\(.*CLONE_THREAD.*\)(\s+=\s*\d+\s*)$/){
         return sprintf("%-79s%s","CLONE_Thread",$1);
     }
-
+    
     if($line=~m/^\s*clone\(.*\)(\s+=\s*\d+\s*)$/){
         return sprintf("%-79s%s","CLONE",$1);
     }
@@ -230,7 +295,7 @@ sub genoutput_getcleanfile{
 
        print   $fout  "$title$body\n";
     }
-
+    
     close($fin);
     close($fout);
 }
@@ -358,7 +423,7 @@ sub generate_summary{
     my  ($dir)  = @_;
     my $curdir=getcwd();
     chdir($dir);
-
+    
 #   generate property_service time
     unlink("property_service");
     unlink("process.tmp");
@@ -387,7 +452,7 @@ sub generate_summary{
     | sed -e 's/^bb\.\(.*\)\.txt:\([0-9]\+:[0-9]\+:[0-9]\+.[0-9]\+\) <\([0-9]\+\).*>:/\2 \1:\3 /' >> process.tmp};
     print "$cmd\n";
     qx($cmd);
-
+    
     $cmd=q{egrep -w execve bb.*  \
     | sed -e 's/ execve(\"\([^"]\+\)\".*/    EXEC \1/' \
     | sed -e 's/^bb\.\(.*\)\.txt:\([0-9]\+:[0-9]\+:[0-9]\+.[0-9]\+\) <\([0-9]\+\).*>:/\2 \1:\3/' >> process.tmp};
@@ -552,7 +617,7 @@ sub parsetree_exec{
     foreach my $pidinfo (@res) {
 
         if( $keyword ){
-            if( $pidinfo->{lineno} != $start_line
+            if( $pidinfo->{lineno} != $start_line 
                 && $pidinfo->{level} <= $start_level ){
                 undef $keyword;
             }
@@ -625,7 +690,7 @@ sub parsetree_exec{
         }
 
 
-        #   ▒▒▒▒ǵ▒һ▒У▒▒▒▒ж▒▒Ƿ▒▒▒▒▒һ▒▒ؼ▒▒ֵĿ▒ʼ
+        #   如果不是第一行，再判断是否是另一个关键字的开始
         if( !$firstfind ){
             my  $firstpart  = substr($line,0,$keyword_treepos);
             if( $firstpart =~ m/\w/ ){
@@ -657,8 +722,8 @@ sub parsetree_exec{
 
         if( $firstfind ){
             $keyword_treepos    = index($line,'+');
-            undef $subkeyword_name;
-            $subkeyword_treepos = 0;
+            undef $subkeyword_name;    
+            $subkeyword_treepos = 0;    
 
             if( $keyword_mode == 1 ){
                 my  $subword    = 0;
@@ -761,3 +826,4 @@ sub parsetree_exec{
 =cut
     return \%procpidinfo;
 }
+
