@@ -245,7 +245,11 @@ now it works, great :)
 
 
 ====================================== XRDP =======================================
-sudo apt-get remove xrdp vnc4server tightvncserver
-sudo apt-get install tightvncserver
-sudo apt-get install xrdp
-sudo service xrdp restart
+apt-get install xserver-xorg-core xserver-xorg-input-libinput xserver-xorg-input-evdev
+apt-get install xserver-xorg-core xserver-xorg-input-libinput xserver-xorg-input-evdev
+apt-get install xserver-xorg xserver-xorg-input-libinput xserver-xorg-input-evdev
+
+apt-get remove xrdp vnc4server tightvncserver
+ apt-get install tightvncserver
+ apt-get install xrdp
+ service xrdp restart
