@@ -253,3 +253,38 @@ apt-get remove xrdp vnc4server tightvncserver
  apt-get install tightvncserver
  apt-get install xrdp
  service xrdp restart
+
+--------------------------------------- WIFI -------------------------------------------------
+安装：
+firmware-iwlwifi  (需要打开no-free)  wireless-tools wpasupplicant (支持 wap 认证)
+intel 驱动如果不成功，需要另外下载：
+驱动首页:
+https://wireless.wiki.kernel.org/en/users/drivers/iwlwifi
+下载对应的
+wget https://wireless.wiki.kernel.org/_media/en/users/drivers/iwlwifi-8265-ucode-22.361476.0.tgz
+然后 ucode 放到 /lib/firmware/
+再重加载 iwlwifi 模块
+
+启动(/etc/network/interfaces 添加下面行)：
+auto wlan0
+iface wlan0 inet dhcp
+pre-up wpa_supplicant -B -i wlan0 -c /etc/wpa_supplicant/wpa_supplicant.conf
+
+同时 /etc/wpa_supplicant/wpa_supplicant.conf 添加下面行：
+ctrl_interface=/var/run/wpa_supplicant
+network={
+  ssid="Trend-BYOD"
+  scan_ssid=1
+  key_mgmt=WPA-EAP
+  pairwise=CCMP TKIP
+  group=CCMP TKIP
+  eap=PEAP
+  identity="your-username"
+  password="your-password"
+  #ca_cert="/etc/certs/radius.pem"
+  phase1="peapver=0"
+  phase2="MSCHAPV2"
+  }
+
+
+然后使用 ifup wlan0 启动
