@@ -269,3 +269,25 @@ RUN sed -i "s|http://archive.ubuntu.com|http://mirrors.163.com|g" /etc/apt/sourc
 '> tensorflow-docker/Dockerfile 
       
 cd tensorflow-docker &&  docker build -t tensorflowcv .
+
+--------------------------------------------------------------------------------------------------
+私有仓库
+mkdir -p /srv/registry/data
+
+docker run -d \
+  -p 5000:5000 \
+  --name registry \
+  -v /srv/registry/data:/var/lib/registry \
+  --restart always \
+  registry:2
+  
+  docker run -d \
+  -p 5000:5000 \
+  --name registry \
+  -v /vosg/docker/registry/data \
+  --restart always \
+  registry:2
+  
+  docker tag debian:latest localhost:5000/debian:latest
+  docker push localhost:5000/debian:latest
+  
