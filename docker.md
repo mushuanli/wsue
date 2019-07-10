@@ -271,44 +271,127 @@ RUN sed -i "s|http://archive.ubuntu.com|http://mirrors.163.com|g" /etc/apt/sourc
 cd tensorflow-docker &&  docker build -t tensorflowcv .
 
 --------------------------------------------------------------------------------------------------
-私有仓库
-启动私有仓库服务
+1. 建立私有仓库
+1.1. 启动私有仓库服务
 docker 的私有仓库也是以一个 docker image 方式提供服务。
 
-默认 image 保存在 container中。如果想让 image 保存到其他路径，那么使用 -v /srv/registry/data:/var/lib/registry 指定保存路径
-启动方式如下：
+默认 image 保存在 container中。如果想让 image 保存到其他路径，那么使用 -v /srv/registry/data:/var/lib/registry 指定保存路径
 
+启动方式如下：
 
 docker run -d \
   -p 5000:5000 \
   --restart=always \
   --name registry \
-  -v /kuberntes/docker/registry/data:/var/lib/registry \
-  registry
+  -v /svr/docker/registry/data:/var/lib/registry \
+  registry:2
 
 
-其中 --restart=always 表示每次 docker 服务重启都会重启这个 image.
+其中 --restart=always 表示每次 docker 服务重启都会重启这个 image.
 
-获取私有仓库信息
+1.2. 获取私有仓库信息
 
 
 curl -XGET http://localhost:5000/v2/_catalog
 curl -XGET http://localhost:5000/v2/image_name/tags/list
 
 
-放一个 image 到私有仓库中
+1.3. 对外提供服务
+要让其他机器能够访问，需要设置密码和https证书。
+
+
+
+1.3.1. 创建密码：
+用户名密码保存在独立文件 htpasswd 中, 可以有多个, 下面是设置admin 账号密码的方法:
+
+mkdir /svr/docker/registry/auth
+docker run --entrypoint htpasswd registry:2 -Bbn admin <insert-password> >> /vosg/docker/registry/auth/htpasswd
+docker ps # Get ID
+docker stop <id> && docker rm <id>
+设置成功后文件内容如下, 每一行包括用户名和密码，如果需要增加其他用户可以继续添加更多行：
+
+[root@localhost registry]# cat /svr/docker/registry/auth/htpasswd
+admin:$2y$05$n0cZ9Sp7bzwXn25AJQAGLOR8EX3SHpy1MnCax.y0nq0UrWnNephGW
+
+
+启动支持htps 认证
+
+1.3.2. 创建https秘钥
+建议使用正式证书。如果要自签证书那：
+
+ 首先修改 /etc/pki/tls/openssl.cnf 配置，在该文件中找到 [ v3_ca ]
+，在它下面添加如下内容：
+
+...
+[ v3_ca ]
+# Extensions for a typical CA
+subjectAltName = IP:10.206.138.106
+再次重启 docker，解决 "x509: cannot validate certificate for 192.168.1.211 because it doesn't contain any IP SANs" bugs。
+
+
+
+生成私有证书：
+
+cd /svr/docker/registry/ ; mkdir -p certs ; openssl req \
+   -newkey rsa:4096 -nodes -sha256 -keyout certs/domain.key \
+   -x509 -days 99999 -out certs/domain.crt
+在每个需要访问的客户端上生效私有证书：
+
+mkdir -p /etc/docker/certs.d/10.206.138.106:5000/
+keytool -printcert -sslserver 10.206.138.106:5000 -rfc > /etc/docker/certs.d/10.206.138.106:5000/ca.crt
+sudo systemctl restart docker
+
+
+1.3.3. 启动
+下面是启动命令，
+
+docker run -d \
+  -p 5000:5000 \
+  --restart=always \
+  --name registry \
+  -v /svr/docker/registry/data:/var/lib/registry \
+  -v /svr/docker/registry/certs:/cert \
+  -v /svr/docker/registry/auth:/auth \
+  -e "REGISTRY_HTTP_TLS_CERTIFICATE=/cert/domain.crt" \
+  -e "REGISTRY_HTTP_TLS_KEY=/cert/domain.key" \
+  -e "REGISTRY_AUTH=htpasswd" \
+  -e "REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd" \
+  -e "REGISTRY_AUTH_HTPASSWD_REALM=Registry Realm" \
+  registry:2
+启动时加入 restart=always, 因为容器内保存仓库私有状态，必须保持容器并重用这个容器。
+
+
+y由于参数很多，所以可以通过 yaml 配置文件方式启动, 把下面内容保存到 docker-compose.yaml文件中，和上面运行方式等同:
+
+registry:
+ restart: always
+ image: registry:2
+ ports:
+ — 5000:5000
+ environment:
+ REGISTRY_HTTP_TLS_CERTIFICATE: /cert/domain.crt
+ REGISTRY_HTTP_TLS_KEY: /cert/domain.key
+ REGISTRY_AUTH: htpasswd
+ REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
+ REGISTRY_AUTH_HTPASSWD_REALM: Registry Realm
+ volumes:
+ — /svr/docker/registry/data:/var/lib/registry
+ — /svr/docker/registry/cert:/cert
+ — /svr/docker/registry/auth:/auth
+
+
+1.4. 放一个 image 到私有仓库中
 放 image 到私有仓库中，主要先 tag 打标签，然后 push 就可以。
 
-docker tag debian:latest localhost:5000/debian:latest
-docker push localhost:5000/debian:latest
-最后使用 curl 确认已经放上去:
+docker tag debian8:latest 10.206.138.106:5000/debian8:latest
+docker push 10.206.138.106:5000/debian8:latest
+最后在私有仓库服务器上使用 curl 确认已经放上去:
 
 # curl -XGET http://localhost:5000/v2/_catalog
-{"repositories":["debian"]}
+{"repositories":["debian8"]}
 
 
-
-重启私有仓库
+1.5. 重启私有仓库
 重启仓库时，得使用 docker retart 方式重启容器，而不能运行一个新容器。
 
 [root@localhost ~]# docker ps
@@ -322,7 +405,90 @@ fa713d5ad163        registry            "/entrypoint.sh /e..."   23 minutes ago 
 [root@localhost ~]# docker restart fa713d5ad163
 fa713d5ad163
 [root@localhost ~]# curl -XGET http://localhost:5000/v2/_catalog
-{"repositories":["unia8"]}
+{"repositories":["debian8"]}
 
 
-  
+
+
+
+
+2. kubernetes使用私有仓库
+2.1. 创建 secret
+通常在实际的项目中用kubernetes做开发的时候，会用到私有的registry（镜像仓库），比如：在创建应用的时候，镜像用的就是私有仓库的镜像。但是通常会有一个问题，如果你的私有的镜像仓库做了认证和授权，kubernetes在创建应用的时候去获取私有仓库镜像就会失败，会报没有认证的错误。有两种方式去解决。
+
+1. 在k8s中的每个集群中的node节点中去docker login 登录。显然这种方式不合理。
+2. 通过k8s的secret来做。
+下面我主要讲解的就是第二种方式。
+
+首先在其中一个node上登录私有仓库
+
+首先在其中一个node上登录私有仓库
+
+docker login hub.rain.io
+
+
+
+登录成功后会在/root/.docker目录下生产config.json文件，然后执行如下命令：
+
+cat /root/.docker/config.json | base64
+
+
+
+该命令会将你的认证信息通过base64编码，生成一个编码之后的字符串，在linux中terminal中看到是两行，但是其实质是一行，所以之后要用到的这个字符串需要合并为一行。
+
+在kubernetes中的master节点中创建secret 元素：
+
+apiVersion: v1
+kind: Secret
+metadata:
+name: hub.rain.io.key
+type: kubernetes.io/dockercfg
+data:
+.dockercfg: ewoJImF1dGhzIjogewoJCSJkb2NrZXIuY29vY2xhLm9yZyI6IHsKCQkJImF1dGgiOiAiWkdWMk9tUnZZMnRsY2c9PSIsCgkJCSJlbWFpbCI6ICIiCgkJfQoJfQp9
+
+
+
+其中name你可以随便取，推介用私有仓库地址.key的方式命名。
+
+2.2. 应用secret
+之后在创建其他元素的时候指定：imagesPullSecrets即可。例如pod：
+
+apiVersion: v1
+kind: Pod
+metadata:
+name: go-web
+spec:
+containers:
+- name: go-web
+image: hub.yfcloud.io/go-web
+imagePullSecrets:
+- name: hub.rain.io.key
+
+replicationController:
+
+apiVersion: v1
+kind: ReplicationController
+metadata:
+name: go-web
+labels:
+name: go-web
+spec:
+replicas: 1
+selector:
+name: go-web
+template:
+metadata:
+labels:
+name: go-web
+spec:
+containers:
+- name: go-web
+image: hub.yfcloud.io/go-web
+ports:
+- containerPort: 9080
+resources:
+limits:
+cpu: 100m
+memory: 100Mi
+imagePullSecrets:
+- name: hub.rain.io.key
