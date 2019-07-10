@@ -272,22 +272,57 @@ cd tensorflow-docker &&  docker build -t tensorflowcv .
 
 --------------------------------------------------------------------------------------------------
 私有仓库
-mkdir -p /srv/registry/data
+启动私有仓库服务
+docker 的私有仓库也是以一个 docker image 方式提供服务。
+
+默认 image 保存在 container中。如果想让 image 保存到其他路径，那么使用 -v /srv/registry/data:/var/lib/registry 指定保存路径
+启动方式如下：
+
 
 docker run -d \
   -p 5000:5000 \
+  --restart=always \
   --name registry \
-  -v /srv/registry/data:/var/lib/registry \
-  --restart always \
-  registry:2
-  
-  docker run -d \
-  -p 5000:5000 \
-  --name registry \
-  -v /vosg/docker/registry/data \
-  --restart always \
-  registry:2
-  
-  docker tag debian:latest localhost:5000/debian:latest
-  docker push localhost:5000/debian:latest
+  -v /kuberntes/docker/registry/data:/var/lib/registry \
+  registry
+
+
+其中 --restart=always 表示每次 docker 服务重启都会重启这个 image.
+
+获取私有仓库信息
+
+
+curl -XGET http://localhost:5000/v2/_catalog
+curl -XGET http://localhost:5000/v2/image_name/tags/list
+
+
+放一个 image 到私有仓库中
+放 image 到私有仓库中，主要先 tag 打标签，然后 push 就可以。
+
+docker tag debian:latest localhost:5000/debian:latest
+docker push localhost:5000/debian:latest
+最后使用 curl 确认已经放上去:
+
+# curl -XGET http://localhost:5000/v2/_catalog
+{"repositories":["debian"]}
+
+
+
+重启私有仓库
+重启仓库时，得使用 docker retart 方式重启容器，而不能运行一个新容器。
+
+[root@localhost ~]# docker ps
+CONTAINER ID        IMAGE               COMMAND                  CREATED             STATUS              PORTS                    NAMES
+fa713d5ad163        registry            "/entrypoint.sh /e..."   23 minutes ago      Up 23 minutes       0.0.0.0:5000->5000/tcp   silly_leavitt
+[root@localhost ~]# docker kill fa713d5ad163
+fa713d5ad163
+[root@localhost ~]# docker ps -a
+CONTAINER ID        IMAGE               COMMAND                  CREATED             STATUS                       PORTS               NAMES
+fa713d5ad163        registry            "/entrypoint.sh /e..."   23 minutes ago      Exited (137) 2 seconds ago                       silly_leavitt
+[root@localhost ~]# docker restart fa713d5ad163
+fa713d5ad163
+[root@localhost ~]# curl -XGET http://localhost:5000/v2/_catalog
+{"repositories":["unia8"]}
+
+
   
