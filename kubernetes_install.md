@@ -10,7 +10,7 @@
 
 # 2. All node: prepare running env:
 
-  ### * disable swap
+  * ### Swap: Disable
   Disable running swap stat:
   ```bash
 swapoff -a
@@ -22,12 +22,12 @@ vi /etc/fstab
 #/dev/mapper/ubuntu--vg-swap_1 none swap sw 0 0
   ```
 
-  ### * run 'hostnamectl set-hostname uniq hostname ' on all node.
+  * ### All Node - Run 'hostnamectl set-hostname uniq hostname '.
   ```bash
 hostnamectl set-hostname k8s.rainli.net
   ```
 
-  ### * add all nodes ip to /etc/hosts
+  * ### Hostname map: all nodes /etc/hosts has all node's hostname map
   master: 10.206.138.107
   worker: 10.206.138.108
   /etc/hosts file should include all kubernetes master and worker nodes:
@@ -39,14 +39,14 @@ root@k8s:~# cat /etc/hosts
 ...
   ```
 
-  ### * disable SELinux:
+  * ### SELinux: Disable:
   ```bash
 setenforce 0
 sed -i 's/SELINUX=enforcing/SELINUX=disabled/g' /etc/selinux/config
 reboot
   ```
 
-  ### * Debian10: fix iptables compatable
+  * ### Debian10 - fix iptables compatable
   debian10 need iptables_legacy, other distribute not require:
   ```
 update-alternatives --config iptables
@@ -59,7 +59,7 @@ There are 2 choices for the alternative iptables (providing /usr/sbin/iptables).
 update-alternatives: using /usr/sbin/iptables-legacy to provide /usr/sbin/iptables (iptables) in manual mode
   ```
 
-  ### * RHEL 7/CentOS 7 need to set net.bridge.bridge-nf-call-iptables=1:
+  * ### RHEL 7/CentOS 7 - need to set net.bridge.bridge-nf-call-iptables=1:
   ```bash
 cat <<EOF > /etc/sysctl.d/k8s.conf
 net.bridge.bridge-nf-call-ip6tables = 1
@@ -68,7 +68,7 @@ EOF
 sysctl -p
   ```
 
-  ### * If use private docker registry, add crt:
+  * ### Private Docker Registry: If use self signed cert, add it to all nodes:
   Assume docker private registry server name is git, cert file is /home/registry/certs/domain.crt.
 
   for Ubuntu/debian:
@@ -88,7 +88,7 @@ update-ca-trust extract
 # 3. All node: install docker and kubernetes
   to avoid docker used too many disk space, I limit docker run in k8s/docker dir.
 
-  ### install docker:
+  * ### Docker: install
   ```bash
 mkdir -p /k8s/docker
 cat > /etc/docker/daemon.json <<EOF
@@ -107,7 +107,7 @@ systemctl enable docker && systemctl restart docker
   ```
 
 
-  ### install kubelet:
+  * ### kubelet: install
   ```bash
 apt -y install apt-transport-https gnupg2 curl
 curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
@@ -118,7 +118,7 @@ apt -y install kubeadm kubelet kubectl
   ```
 
 
-  ### only enabling, do not run yet:
+  * ### kubelet: enable but not run
   ```bash
 systemctl enable kubelet
   ```
@@ -128,7 +128,7 @@ systemctl enable kubelet
 
 
 # 4. Master node: init kubernetes
-  ### enable firewall if has firewall:
+  * ### Firewall: enable kubernetes ports
   Debian10 default not open firewall, so can ignore firewall.
   ```bash
 firewall-cmd --permanent --add-port=6443/tcp
@@ -152,7 +152,11 @@ ufw allow 10255/tcp
 ufw reload
   ```
 
-  ### use flannel network(pod-network-cidr=10.244.0.0/16). 10.206.138.107 is local IP address:
+  * ### Cluster: Init
+  Param Info:
+   * Flannel network (--pod-network-cidr=10.244.0.0/16)
+   * 10.206.138.107 is local IP address
+   
   ```bash
 kubeadm init --apiserver-advertise-address=10.206.138.107 --pod-network-cidr=10.244.0.0/16
   ```
@@ -164,20 +168,21 @@ root@k8s:~# cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
 root@k8s:~# chown $(id -u):$(id -g) $HOME/.kube/config
   ```
 
-  ### setup network(flannel):
+  * ### Cluster: setup network(flannel):
   ```bash
 kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
   ```
 
-  ### Now check cluster status, it should be OK:
+  * ### Cluster: get status
+  Use these command to check cluster status, it should be OK:
   ```bash
 kubectl get nodes
 kubectl get svc
 kubectl get pods --all-namespaces
   ```
 
-# 5. worker node: join kubernetes cluster:
-  ### enable firewall if has firewall:
+# 5. Worker node: register kubernetes cluster:
+  * ### Firewall: enable kubernetes ports
   Debian10 default not open firewall, so can ignore firewall.
 
   ```bash
@@ -193,7 +198,7 @@ ufw allow 10255/tcp
 ufw reload
   ```
 
-  ### load kubernetes require driver:
+  * ### Driver: load ip_vs
   ```bash
 modprobe ip_vs
 modprobe ip_vs_rr
@@ -201,7 +206,7 @@ modprobe ip_vs_wrr
 modprobe ip_vs_sh
   ```
 
-  ### Let modules auto load when boot
+  Let modules auto load when boot
   change /etc/modules, add these lines to end:
   ```bash
 ip_vs
@@ -210,14 +215,15 @@ ip_vs_wrr
 ip_vs_sh
   ```
 
-  ### join to kubernetes cluster:
+  * ### Cluster: register self
   when run kubeadm init in master, it shows a 'kubeadm join' commmand, copy it to here and run:
   ```bash
 kubeadm join 10.206.138.106:6443 --token uw8h1x.4vjex3g6tfgt4w2t \
 --discovery-token-ca-cert-hash sha256:99c192dcb2b38438c4aacc5029b86447f18f2b93a0fe0fa7a779192bc952fb53
   ```
 
-  ### now check node stat on master, it should be OK:
+  * ### Cluster: get new node status
+  In master node, use these command to check new worker node status, it should be OK:
   ```bash
 kubectl get nodes
   ```
