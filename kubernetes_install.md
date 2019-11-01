@@ -12,34 +12,39 @@
 
   ### disable swap
   Disable running swap stat:
+  ```
    > swapoff -a
    > vi /etc/fstab
+   ```
    
   comment out for swap line to disable swap after reboot:
+  ```
    > #/dev/mapper/ubuntu--vg-swap_1 none swap sw 0 0
-
+  ```
   ### run 'hostnamectl set-hostname uniq hostname ' on all node. 
+  ```
    > hostnamectl set-hostname k8s.rainli.net
-
+  ```
+  
   ### add all nodes ip to /etc/hosts
   master: 10.206.138.107
   worker: 10.206.138.108 
   /etc/hosts file should include all kubernetes master and worker nodes:
-
+  ```
    > root@k8s:~# cat /etc/hosts
    > 127.0.0.1    localhost
    > 10.206.138.107    k8s.rainli.net  k8s
    > 10.206.138.108    k8sn.rainli.net k8sn 
    > ...
-   > 
+  ```
 
   ### disable SELinux:
+  ```
    > setenforce 0
    > sed -i 's/SELINUX=enforcing/SELINUX=disabled/g' /etc/selinux/config
    > reboot
-   >
-   > 
-
+  ```
+  
   ### fix iptables compatable, debian10 default not open firewall, so can ignore firewall:
 
    > update-alternatives --config iptables
