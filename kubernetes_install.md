@@ -161,7 +161,13 @@ ufw reload
 kubeadm init --apiserver-advertise-address=10.206.138.107 --pod-network-cidr=10.244.0.0/16
   ```
 
-  save the output token(it is in "kubeadm join 10.0.0.30:6443 --token ... " format) - it will be used by nodes to join cluster. and set cluster admin(these command showed in kubeadm init ):
+  save the output token, it like this format, and will used by worker node:
+    ```bash
+kubeadm join 10.206.138.106:6443 --token uw8h1x.4vjex3g6tfgt4w2t \
+--discovery-token-ca-cert-hash sha256:99c192dcb2b38438c4aacc5029b86447f18f2b93a0fe0fa7a779192bc952fb53
+  ```
+  
+  and run these commands to set cluster admin(these command showed in kubeadm init output):
   ```bash
 root@k8s:~#   mkdir -p $HOME/.kube
 root@k8s:~# cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
