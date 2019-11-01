@@ -12,17 +12,18 @@
 
   ### disable swap
   Disable running swap stat:
-  ```
+  ```bash
 swapoff -a
 vi /etc/fstab
-   ```
+  ```
    
   comment out for swap line to disable swap after reboot:
-  ```
+  ```bash
 #/dev/mapper/ubuntu--vg-swap_1 none swap sw 0 0
   ```
+
   ### run 'hostnamectl set-hostname uniq hostname ' on all node. 
-  ```
+  ```bash
 hostnamectl set-hostname k8s.rainli.net
   ```
   
