@@ -10,7 +10,7 @@
 
 # 2. All node: prepare running env:
 
-  ### disable swap
+  ### * disable swap
   Disable running swap stat:
   ```bash
 swapoff -a
@@ -22,12 +22,12 @@ vi /etc/fstab
 #/dev/mapper/ubuntu--vg-swap_1 none swap sw 0 0
   ```
 
-  ### run 'hostnamectl set-hostname uniq hostname ' on all node.
+  ### * run 'hostnamectl set-hostname uniq hostname ' on all node.
   ```bash
 hostnamectl set-hostname k8s.rainli.net
   ```
 
-  ### add all nodes ip to /etc/hosts
+  ### * add all nodes ip to /etc/hosts
   master: 10.206.138.107
   worker: 10.206.138.108
   /etc/hosts file should include all kubernetes master and worker nodes:
@@ -39,14 +39,15 @@ root@k8s:~# cat /etc/hosts
 ...
   ```
 
-  ### disable SELinux:
+  ### * disable SELinux:
   ```bash
 setenforce 0
 sed -i 's/SELINUX=enforcing/SELINUX=disabled/g' /etc/selinux/config
 reboot
   ```
 
-  ### fix iptables compatable, debian10 default not open firewall, so can ignore firewall:
+  ### * Debian10: fix iptables compatable
+  debian10 need iptables_legacy, other distribute not require:
   ```
 update-alternatives --config iptables
 There are 2 choices for the alternative iptables (providing /usr/sbin/iptables).   Selection    Path                       Priority   Status
@@ -58,7 +59,7 @@ There are 2 choices for the alternative iptables (providing /usr/sbin/iptables).
 update-alternatives: using /usr/sbin/iptables-legacy to provide /usr/sbin/iptables (iptables) in manual mode
   ```
 
-  ### RHEL 7/CentOS 7 need to set net.bridge.bridge-nf-call-iptables=1:
+  ### * RHEL 7/CentOS 7 need to set net.bridge.bridge-nf-call-iptables=1:
   ```bash
 cat <<EOF > /etc/sysctl.d/k8s.conf
 net.bridge.bridge-nf-call-ip6tables = 1
@@ -67,14 +68,14 @@ EOF
 sysctl -p
   ```
 
-  ### If use private docker registry, add crt:
+  ### * If use private docker registry, add crt:
   Assume docker private registry server name is git, cert file is /home/registry/certs/domain.crt.
 
   for Ubuntu/debian:
   ```bash
 scp git:/home/registry/certs/domain.crt /usr/local/share/ca-certificates/git.crt
 update-ca-certificates
-# if remove, delete ca.crt, then run: update-ca-certificates --fresh
+# when remove, delete ca.crt, then run: update-ca-certificates --fresh
   ```
 
   for RHEL/CentOS:
@@ -128,6 +129,7 @@ systemctl enable kubelet
 
 # 4. Master node: init kubernetes
   ### enable firewall if has firewall:
+  Debian10 default not open firewall, so can ignore firewall.
   ```bash
 firewall-cmd --permanent --add-port=6443/tcp
 firewall-cmd --permanent --add-port=2379-2380/tcp
@@ -176,6 +178,8 @@ kubectl get pods --all-namespaces
 
 # 5. worker node: join kubernetes cluster:
   ### enable firewall if has firewall:
+  Debian10 default not open firewall, so can ignore firewall.
+
   ```bash
 firewall-cmd --permanent --add-port=10251/tcp
 firewall-cmd --permanent --add-port=10255/tcp
