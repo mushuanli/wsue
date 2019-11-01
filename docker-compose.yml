@@ -1,0 +1,80 @@
+version: '3'
+
+#  docker private registry with ssl support:
+#  1. configure auth
+#       apt install apache2-utils
+#       mkdir -p /home/registry/auth /home/registry/data /home/registry/certs
+#       cd /home/registry/auth
+#       htpasswd -Bc registry.password firstusername
+#       htpasswd registry.password otherusername
+#   2. start registry
+#       docker-compose up -d
+#      stop:
+#       docker-compose down
+#
+#   3. intergrate with nginx(Optional)
+#       
+#+location / {
+#+    # Do not allow connections from docker 1.5 and earlier
+#+    # docker pre-1.6.0 did not properly set the user agent on ping, catch "Go *" user agents
+#+    if ($http_user_agent ~ "^(docker\/1\.(3|4|5(?!\.[0-9]-dev))|Go ).*$" ) {
+#+      return 404;
+#+    }
+
+#+    proxy_pass                          http://localhost:5000;
+#+    proxy_set_header  Host              $http_host;   # required for docker client's sake
+#+    proxy_set_header  X-Real-IP         $remote_addr; # pass on real client's IP
+#+    proxy_set_header  X-Forwarded-For   $proxy_add_x_forwarded_for;
+#+    proxy_set_header  X-Forwarded-Proto $scheme;
+#+    proxy_read_timeout                  900;
+#+}
+#   4. nginx improve performance:(Optional)
+#       /etc/nginx/nginx.conf
+#       http {
+#               +client_max_body_size 2000M;
+#       }
+#
+#   5. repo use ssl, assume git server IP is 10.206.138.106
+#      /etc/ssl/openssl.cnf
+#      [v3_ca]
+#      + subjectAltName = IP:10.206.138.106
+#
+#      openssl req   -newkey rsa:4096 -nodes -sha256 -keyout /home/registry/certs/domain.key   -x509 -days 365 -out /home/registry/certs/domain.crt
+#      # Common Name (e.g. server FQDN or YOUR name) []: 10.206.138.106
+#
+#      mkdir -p /etc/docker/certs.d/10.206.138.106:5000/
+#      cp /home/registry/certs/domain.crt  /etc/docker/certs.d/10.206.138.106:5000/ca.crt
+#      systemctl restart docker 
+#
+#   6. client add private ca:
+#      Debian/ubuntu:
+#        cp ca.crt /usr/local/share/ca-certificates/
+#        update-ca-certificates
+#        # if remove, delte ca.crt, then run: update-ca-certificates --fresh
+#
+#      CentOS:
+#        cp ca.crt /etc/pki/ca-trust/source/anchors/
+#        update-ca-trust extract
+#
+#      Last step, must run else will get 'x509: certificate signed by unknown authority':
+#        service docker restart
+#
+services:
+  registry:
+    restart: always
+    image: registry:2
+    ports:
+    - "5000:5000"
+    environment:
+      REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY: /data
+      REGISTRY_HTTP_SECRET: "10.206.138.106"
+      REGISTRY_HTTP_TLS_CERTIFICATE: /certs/domain.crt
+      REGISTRY_HTTP_TLS_KEY: /certs/domain.key
+
+      #REGISTRY_AUTH: htpasswd
+      #REGISTRY_AUTH_HTPASSWD_REALM: Registry
+      #REGISTRY_AUTH_HTPASSWD_PATH: /auth/registry.password
+    volumes:
+            #- /home/registry/auth:/auth
+      - /home/registry/certs:/certs
+      - /home/registry/data:/data
