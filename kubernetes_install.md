@@ -127,7 +127,7 @@ systemctl enable kubelet
 
 
 
-# 4. Master node: init kubernetes
+# 4. Master node: init kubernetes cluster
   * ### Firewall: enable kubernetes ports
   Debian10 default not open firewall, so can ignore firewall.
   ```bash
@@ -181,7 +181,7 @@ kubectl get svc
 kubectl get pods --all-namespaces
   ```
 
-# 5. Worker node: register kubernetes cluster:
+# 5. Worker node: register to kubernetes cluster:
   * ### Firewall: enable kubernetes ports
   Debian10 default not open firewall, so can ignore firewall.
 
