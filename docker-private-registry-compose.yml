@@ -8,7 +8,7 @@ version: '3'
 #       htpasswd -Bc registry.password firstusername
 #       htpasswd registry.password otherusername
 #   2. start registry
-#       docker-compose up -d
+#       docker-compose up -d -f docker-private-registry-compose.yml
 #      stop:
 #       docker-compose down
 #
@@ -46,14 +46,14 @@ version: '3'
 #      cp /home/registry/certs/domain.crt  /etc/docker/certs.d/10.206.138.106:5000/ca.crt
 #      systemctl restart docker 
 #
-#   6. client add private ca:
+#   6. client add private ca(assume git is the host name of git server):
 #      Debian/ubuntu:
-#        cp ca.crt /usr/local/share/ca-certificates/
+#        scp git:/home/registry/certs/domain.crt /usr/local/share/ca-certificates/git.crt
 #        update-ca-certificates
 #        # if remove, delte ca.crt, then run: update-ca-certificates --fresh
 #
 #      CentOS:
-#        cp ca.crt /etc/pki/ca-trust/source/anchors/
+#        scp git:/home/registry/certs/domain.crt /etc/pki/ca-trust/source/anchors/git.crt
 #        update-ca-trust extract
 #
 #      Last step, must run else will get 'x509: certificate signed by unknown authority':
