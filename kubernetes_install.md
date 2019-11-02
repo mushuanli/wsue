@@ -1,4 +1,7 @@
 
+---
+   # Install kubernetes
+---
 
 # 1. ref:
 
@@ -232,4 +235,87 @@ kubeadm join 10.206.138.106:6443 --token uw8h1x.4vjex3g6tfgt4w2t \
   In master node, use these command to check new worker node status, it should be OK:
   ```bash
 kubectl get nodes
+  ```
+  
+  
+  ---
+    # Install addons
+  ---
+  
+  
+  ---
+    # Deploy an pod
+  ---
+  If it pull image from docker, create a secret("regcred-xdr-backend-tiars") fot it:
+  ```
+  kubectl create secret docker-registry regcred-xdr-backend-tiars --docker-server=<your-registry-server> --docker-username=<your-name> --docker-password=<your-pword> --docker-email=<your-email>
+  ```
+  
+  ---
+    # Normal command
+  ---
+  get secret info:
+  ```
+  kubectl get secret secret-xdr-backend-ti-ddb
+  ```
+  
+  ---
+    # Debug command
+  ---
+  # 1. Check Node error
+  * ### Master:
+  - /var/log/kube-apiserver.log - API Server, responsible for serving the API
+  - /var/log/kube-scheduler.log - Scheduler, responsible for making scheduling decisions
+  - /var/log/kube-controller-manager.log - Controller that manages replication controllers
+  * ### Worker Nodes:
+  - /var/log/kubelet.log - Kubelet, responsible for running containers on the node
+  - /var/log/kube-proxy.log - Kube Proxy, responsible for service load balancing
+
+  # 2. Check Pod/service error
+  if Pod unhealth or always crash:
+  ```
+  kubectl logs ${POD_NAME} ${CONTAINER_NAME}
+  ```
+  or
+  ```
+  kubectl logs --previous ${POD_NAME} ${CONTAINER_NAME}
+  ```
+  
+  get Pod(xdr-backend-ti) logs:
+  ```
+  kubectl logs -f deployment/app
+  # Or
+  kubectl logs --selector app=xdr-backend-ti
+  # Or show in realtime:
+  kubectl logs -f deployment/xdr-backend-ti
+  ```
+  
+  get pod status:
+  ```
+   kubectl describe pods xdr-backend-ti
+  ```
+  
+  exec command in pod's container, if only one container, can ignore "-c ${CONTAINER_NAME}"
+  ```
+  kubectl exec ${POD_NAME} -c ${CONTAINER_NAME} -- ${CMD} ${ARG1} ${ARG2} ... ${ARGN}
+  ```
+  
+  check pod yaml file error:
+  ```
+  kubectl apply --validate -f mypod.yaml
+  ```
+  
+  check RC error:
+  ```
+  kubectl describe rc ${CONTROLLER_NAME}
+  ```
+  
+  check service error - if has endpoint:
+  ```
+  kubectl get endpoints ${SERVICE_NAME}
+  ```
+  
+  check service error - if has pods:
+  ```
+  kubectl get pods --selector=name=nginx,type=frontend
   ```
