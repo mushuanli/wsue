@@ -319,3 +319,452 @@ kubectl get nodes
   ```
   kubectl get pods --selector=name=nginx,type=frontend
   ```
+
+  # Demo
+  ## Dockerfile
+  ```
+  FROM node:10-alpine
+
+USER node
+RUN mkdir -p /home/node/app/{keys,node_modules}
+WORKDIR /home/node/app
+ADD app.tar.gz .
+RUN npm install
+EXPOSE 8081
+
+CMD [ "node", "xdr_app_backend_server.js" ]
+```
+
+  ## rain-test-settings.yaml(define kubernetes deploy and service)
+  ```
+  apiVersion: apps/v1 # for versions before 1.9.0 use apps/v1beta2
+kind: Deployment
+metadata:
+  name: rain-test
+  namespace: 
+  labels:
+    app: rain-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rain-test
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: rain-test
+        role: master
+        tier: backend
+    spec:
+      nodeSelector:
+        "beta.kubernetes.io/os": linux
+      imagePullSecrets:
+      - name: secret-ecr-xdr-backend-tiars
+      volumes:
+      - name: jwt-keys
+        secret:
+          secretName: secret-jwt-rain-test
+      containers:
+      - name: rain-test
+        image: 10.206.138.106:5000/xdr_backend_ti:1.0.1  # or just image: redis
+        env:
+        - name: NODE_ENV
+          value: debug
+        - name: AWSDDB_REGION
+          valueFrom:
+            secretKeyRef:
+              name: secret-ddb-rain-test
+              key: region
+        - name: AWSDDB_PREFIX
+          valueFrom:
+            secretKeyRef:
+              name: secret-ddb-rain-test
+              key: dbname_prefix
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: secret-ddb-rain-test
+              key: username
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: secret-ddb-rain-test
+              key: password
+        resources:
+          requests:
+            cpu: 100m
+            memory: 100Mi
+        volumeMounts:
+          - mountPath: "/home/node/app/keys"
+            name: jwt-keys
+            readOnly: true
+        ports:
+        - containerPort: 8081
+        livenessProbe:
+          httpGet:
+            path: /rain/test/hello
+            port: 8081
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: rain-test
+  namespace: 
+  annotations:
+    service.beta.kubernetes.io/brightbox-load-balancer-healthcheck-request: /
+spec:
+        #type: LoadBalancer
+  type: NodePort
+  selector:
+    app: rain-test
+  ports:
+    - name: rain
+      protocol: TCP
+      port: 80
+      targetPort: 8081
+  ```
+  
+  ## secret config file(regcred-aws-dev.yaml)
+  # dev
+apiVersion: v1
+kind: Secret
+metadata:
+  name: secret-jwt-rain-test
+type: Opaque
+data:
+  # echo -n 'password or username' | base64
+  region: dXMtd2VzdC0y
+  dbname_prefix: dXMt
+  username: FFFFFFFF=
+  password: FFFFFFFFFFFFFFF==
+
+  ## deploy script(deploy.sh)
+  save as deploy.sh, auto deploy service
+  ```
+  #!/bin/bash
+
+if [[ "$1" == "setup" ]] ; then
+    ONLY_SETUP="TRUE"
+    shift
+fi
+
+if [[ "$1" == "init" ]] ; then
+    ONLY_INITCONFIG="TRUE"
+    shift
+fi
+
+if [[ "$1" == "deploy" ]] ; then
+    ONLY_DEPLOY="TRUE"
+    shift
+fi
+
+if [[ "$1" == "uninstall" ]] ; then
+    ONLY_UNINSTALL="TRUE"
+    shift
+fi
+
+if [[ "$1" == "stat" ]] ; then
+    ONLY_STAT="TRUE"
+    shift
+fi
+
+
+RUNNING_ENV=$1
+IMAGE_VERSION=$2
+
+NODE_ENV=dev
+ECR_SERVER=10.206.138.106:5000
+ECR_IMAGE_NAME='rain-test'
+
+EKS_SECRET_ECR="secret-ecr-$ECR_IMAGE_NAME"
+EKS_SECRET_JWT="secret-jwt-$ECR_IMAGE_NAME"
+EKS_SECRET_YAML='regcred-aws-dev.yaml'
+EKS_DEPLOY_YAML='rain-test-settings.yaml'
+
+AWS_REGION='us-west-2'
+AWS_DBPREFIX=dev
+
+KEYS_RAIN_V1='rain_v1.pub.pem'
+KEYS_RAIN_V2='rain_v2.pub.pem'
+
+
+function help() {
+    echo "param: [setup|init|deploy|uninstall|stat] env(dev|stg|prod) image_version"
+    echo "    env: dev|stg|prod|int"
+    echo "    image_version: such as 1.0.1001"
+}
+
+function setup(){
+    set -e
+
+    if ! [ -x "$(command -v aws)" ]; then
+        if ! [ -x "$(command -v pip3 )" ] ; then
+            echo 'install pip3 ...'
+            curl -O https://bootstrap.pypa.io/get-pip.py
+            python3 get-pip.py 
+            pip3 install awscli --upgrade 
+            exit 1
+        fi
+
+        if ! [ -x "$(command -v aws)" ] ; then
+            echo 'install aws failed'
+            exit 1
+        fi
+    fi
+
+    if ! [ -x "$(command -v docker)" ]; then
+        if [ -x "$(command -v yum)" ] ; then
+            yum install -y docker
+        elif [ -x "$(command -v apt)" ] ; then
+            apt install -y docker.io
+        fi
+
+        if ! [ -x "$(command -v docker)" ]; then
+            echo 'install docker failed'
+            exit 1
+        fi
+    fi
+
+    if ! [ -x "$(command -v kubectl)" ]; then
+        if [ -x "$(command -v yum)" ] ; then
+            cat <<'EOF' > /etc/yum.repos.d/kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-$basearch
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+EOF
+            yum -y install kubeadm kubelet kubectl
+        elif [ -x "$(command -v apt)" ] ; then
+            apt -y install apt-transport-https gnupg2 curl
+            curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
+
+            echo "deb http://apt.kubernetes.io/ kubernetes-xenial main" | tee -a /etc/apt/sources.list.d/kubernetes.list
+            apt update
+            apt -y install kubectl            
+        fi
+
+        if ! [ -x "$(command -v kubectl)" ]; then
+            echo '*** install kubectl failed ***'
+            exit 1
+        fi
+    fi
+
+    if [[ -z "$ECR_REGION" ]] ; then
+        echo '*** Init Kubectl cli success ***'
+        exit 0
+    fi
+
+    echo ''
+    echo 'Begin Init AWS and EKS'
+    aws configure
+    
+    read -p 'EKS Region ("us-east-1"): ' eks_region
+    read -p 'EKS namespace("rain-ekspace"): ' eks_name
+    if [[ -z "$eks_region" ]] ; then
+        eks_region="us-east-1"
+    fi
+    if [[ -z "$eks_name" ]] ; then
+        eks_name="rain-ekspace"
+    fi
+
+    echo "EKS Info: $eks_name on $eks_region, ECR Region: $ECR_REGION"
+    aws eks --region $eks_region update-kubeconfig --name $eks_name
+    $(aws ecr get-login --region "$ECR_REGION" --no-include-email)
+    aws ecr create-repository --repository-name $ECR_PATH$ECR_IMAGE_NAME || true
+}
+
+function rebuildimage(){
+    local localimage=$1
+    local ecrimage=$2
+
+
+    oldimages=$(docker images --format "{{.ID}}: {{.Repository}}:{{.Tag}}" | grep -w "$localimage" | awk -F: '{print $1}' | sort | uniq)
+    if [ ! -z "$oldimages" ] ; then
+        echo "*** delete old images: $oldimages ***"
+        docker rmi -f $oldimages
+    fi
+
+    rm -f app.tar.gz ; cd .. && tar czf $OLDPWD/app.tar.gz *.js package.json web.config && cd -
+    docker build -f Dockerfile . -t $localimage
+    rm -f app.tar.gz
+    echo "will tag and push $localimage to $ecrimage, make sure has rum:"
+    echo "    aws ecr get-login --region us-east-1 --no-include-email"
+    echo "    aws ecr create-repository --repository-name $ECR_PATH$ECR_IMAGE_NAME"
+    
+    docker tag "$localimage" "$ecrimage"
+    docker push "$ecrimage"
+}
+
+
+function updateconfig() {
+    local version=$1
+    local kubename=$2
+    local ecrenv=$3
+    local ecrimg=$4
+
+    sed -r -i -e 's#(\s+region:\s+)(.*)#\1'"$(echo -n $AWS_REGION|base64 -w0)"'#g'          $EKS_SECRET_YAML
+    sed -r -i -e 's#(\s+dbname_prefix:\s+)(.*)#\1'"$(echo -n $AWS_DBPREFIX|base64 -w0)"'#g' $EKS_SECRET_YAML
+    if [[ ! -z "$kubename" ]] ; then
+        sed -r -i -e 's#(\s+kubename:\s+)(.*)#\1'"${kubename}"'#g' $EKS_DEPLOY_YAML
+    fi
+    sed -r -i -e 's#(\s+image:\s+)(.*)#\1'"${ecrimg}"'#g'     $EKS_DEPLOY_YAML
+    sed -r -i -e 's#(\s+image:\s+)(.*)#\1'"${ecrimg}"'#g'     $EKS_DEPLOY_YAML
+    sed -rie '/-\s+name:\s+NODE_ENV/{n;s#(\s+value:\s+)(.*)#\1'"${ecrenv}"'#;}' $EKS_DEPLOY_YAML
+
+    sed -ie 's|\(.*"version"\): "\(.*\)".*|\1: '"\"$version\",|" ../package.json
+}
+
+
+if [[ "$RUNNING_ENV" != "int" ]] ; then
+    if [[ ! -n "${RUNNING_ENV}" ]] ;then
+        echo "not input env"
+        help 
+        exit 1
+    fi
+
+    case ${RUNNING_ENV} in
+        dev)
+            ;;
+
+        stg)
+            NODE_ENV=stage
+            AWS_REGION='us-east-1'
+            AWS_DBPREFIX=staging
+            ;;
+
+        prod)
+            NODE_ENV=product
+            AWS_REGION='us-east-1'
+            AWS_DBPREFIX=prod
+            EKS_SECRET_YAML='regcred-aws-prod.yaml'
+            KEYS_RAIN_V1='rain_v1.pub.pem.prod'
+            KEYS_RAIN_V2='rain_v1.pub.pem.prod'
+            ;;
+
+        *)
+            help
+            exit 1
+            ;;
+    esac
+
+    ECR_SERVER=$(aws ecr get-login --region us-east-1 --no-include-email | awk '{print $7}' | sed 's#^https://##')
+    ECR_PATH='rain-namespace/'
+    ECR_REGION='us-east-1'
+
+    EKS_NAMESPACE='rain-ekrspace'
+    EKS_PARAMS="-n $EKS_NAMESPACE"
+fi
+
+
+if [[ ! -z "$ONLY_SETUP" ]] ; then
+    setup
+    echo 'setup success finish'
+    exit 0
+fi
+
+if [[ ! -z "$ONLY_UNINSTALL" ]] ; then
+    kubectl ${EKS_PARAMS} delete -f $EKS_DEPLOY_YAML
+    kubectl ${EKS_PARAMS} delete -f $EKS_SECRET_YAML
+    kubectl ${EKS_PARAMS} delete secret $EKS_SECRET_ECR
+    kubectl ${EKS_PARAMS} delete secret $EKS_SECRET_JWT
+    echo 'uninstall finish'
+    exit 0
+fi
+
+if [[ ! -z "$ONLY_STAT" ]] ; then
+    kubectl ${EKS_PARAMS} get secret
+    kubectl ${EKS_PARAMS} get svc
+    kubectl ${EKS_PARAMS} get ingress
+    kubectl ${EKS_PARAMS} get pods
+    exit 0
+fi
+
+
+rx="^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+if ! [[ $IMAGE_VERSION =~ $rx ]]; then
+    echo "$IMAGE_VERSION not a valid docker image version!"
+    help 
+    exit 1
+fi
+
+echo "    image version: "${IMAGE_VERSION}
+echo "    env:           "${RUNNING_ENV}
+
+
+
+
+ECR_FULL_IMAGEPATH="$ECR_SERVER/$ECR_PATH$ECR_IMAGE_NAME:$IMAGE_VERSION"
+
+set -e
+
+if [[ -z "$ONLY_DEPLOY" ]] ; then
+    updateconfig "$IMAGE_VERSION" "$EKS_NAMESPACE" "${NODE_ENV}" "${ECR_FULL_IMAGEPATH}"
+
+    echo "*** build $ECR_IMAGE_NAME:$IMAGE_VERSION and push to $ECR_SERVER ***"
+    rebuildimage "$ECR_IMAGE_NAME:$IMAGE_VERSION" "$ECR_FULL_IMAGEPATH"
+    if [[ ! -z "$ONLY_INITCONFIG" ]] ; then
+        echo "Init config success, next command: "
+        echo "    ./deploy.sh deploy $IMAGE_VERSION $RUNNING_ENV"
+        exit 0
+    fi
+fi
+
+
+
+echo "*** create secrets ***"
+
+
+
+if [[ ! -z "$ECR_REGION" ]] ; then
+    # create ecr secret start
+    EMAIL='test@rain.com'                                     #can be anything
+    TOKEN=`aws ecr --region=${ECR_REGION} get-authorization-token --output text --query authorizationData[].authorizationToken | base64 -d | cut -d: -f2`
+    kubectl ${EKS_PARAMS} create secret docker-registry ${EKS_SECRET_ECR} \
+        --docker-server=https://$ECR_SERVER \
+        --docker-username=AWS \
+        --docker-password="${TOKEN}" \
+        --docker-email="${EMAIL}" --dry-run -o yaml | kubectl apply -f -
+else
+    #   LOCAL test server
+    kubectl ${EKS_PARAMS} create secret docker-registry ${EKS_SECRET_ECR} \
+        --docker-server=https://$ECR_SERVER \
+        --docker-username=root \
+        --docker-password=root \
+        --docker-email="${EMAIL}" --dry-run -o yaml | kubectl apply -f -
+fi
+
+echo "create $EKS_SECRET_YAML"
+kubectl ${EKS_PARAMS} apply -f $EKS_SECRET_YAML
+echo "create $EKS_SECRET_JWT"
+kubectl ${EKS_PARAMS} create secret generic $EKS_SECRET_JWT \
+    --from-file=${KEYS_RAIN_V1}=../keys/$KEYS_RAIN_V1 \
+    --from-file=${KEYS_RAIN_V2}=../keys/$KEYS_RAIN_V2 \
+     --dry-run -o yaml | kubectl apply -f -
+
+echo "*** create deployment and service ***"
+kubectl ${EKS_PARAMS} apply -f $EKS_DEPLOY_YAML
+
+echo ''
+echo "success redeploy $ECR_FULL_IMAGEPATH"
+echo ''
+echo "################## finish deploy ##################"
+
+exit 0
+
+
+    # create ecr secret end
+
+
+  ```
