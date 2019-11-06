@@ -434,6 +434,7 @@ spec:
   ```
   
   ## secret config file(regcred-aws-dev.yaml)
+  ```
   # dev
 apiVersion: v1
 kind: Secret
@@ -446,6 +447,7 @@ data:
   dbname_prefix: dXMt
   username: FFFFFFFF=
   password: FFFFFFFFFFFFFFF==
+```
 
   ## deploy script(deploy.sh)
   save as deploy.sh, auto deploy service
