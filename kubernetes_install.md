@@ -239,12 +239,16 @@ kubectl get nodes
   
   
   ---
-    # Install addons
+  
+  # Install addons
+  
   ---
   
   
   ---
-    # Deploy an pod
+  
+  # Deploy an pod
+    
   ---
   If it pull image from docker, create a secret("regcred-xdr-backend-tiars") fot it:
   ```
@@ -252,9 +256,12 @@ kubectl get nodes
   ```
   
   ---
-    # Normal command
+  
+  # Normal command
+    
   ---
-    ## Pod and deployment commands
+  
+  ## Pod and deployment commands
     
   ### create or update resource
   ```
@@ -320,6 +327,29 @@ kubectl get nodes
   ```
   kubectl scale deployment.v1.apps/nginx-deployment --replicas=9
   ```
+  
+  ## Service
+  
+  ### Service type
+  ClusterIP: export service by cluster internal IP
+  NodePort:export service by * each node's * port , all access to this port will forward to ClusterIP, it can access ouside the cluster
+  LoadBalancer : provided by cloud provider, External traffic to the load balancer will be routed to the NodePort which in turn will be routed to internal ClusterIP .
+  
+  
+  ### Command:
+  ```
+  kubectl describe service myservice
+  ```
+  
+  ```
+  kubectl get service/myservice
+  ```
+  
+  ```
+  kubectl delete service myservice
+  ```
+  
+  
   
   ## Other command 
    
