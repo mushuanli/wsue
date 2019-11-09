@@ -240,14 +240,14 @@ kubectl get nodes
   
   ---
   
-  # Install addons
+  # 5. Install addons
   
   ---
   
   
   ---
   
-  # Deploy an pod
+  # 6. Deploy an pod
     
   ---
   If it pull image from docker, create a secret("regcred-xdr-backend-tiars") fot it:
@@ -257,11 +257,11 @@ kubectl get nodes
   
   ---
   
-  # Normal command
+  # 7. Normal command
     
   ---
   
-  ## Pod and deployment commands
+  ## 7.1 Pod and deployment commands
     
   ### create or update resource
   ```
@@ -328,7 +328,7 @@ kubectl get nodes
   kubectl scale deployment.v1.apps/nginx-deployment --replicas=9
   ```
   
-  ## Service
+  ## 7.2 Service
   
   ### Service type
   ClusterIP: export service by cluster internal IP
@@ -350,6 +350,33 @@ kubectl get nodes
   ```
   
   
+  ## 7.3 Ingress
+  Kubernetes Ingress exposes HTTP and HTTPS routes from outside the cluster to Services within the cluster. Traffic routing is controlled by rules defined on the ingress resource.
+  When use Ingress, when the service start, it will auto register to Ingress. else need to create a reverse proxy to service.
+  
+ to use Ingress, need to:
+ 1. create role
+ ```
+ $ wget https://raw.githubusercontent.com/kubernetes-sigs/aws-alb-ingress-controller/v1.0.1/docs/examples/rbac-role.yaml
+ ```
+ 
+ 2. setup Ingress
+ ```
+ $ wget https://raw.githubusercontent.com/kubernetes-sigs/aws-alb-ingress-controller/v1.0.1/docs/examples/alb-ingress-controller.yaml
+ ```
+ 
+ view ingress info:
+```
+ kubectl describe ing ingress
+```
+  
+  ## 7.4 configmap and secret
+  
+  Can login pod to view env, and ls to view mount secrets :
+  ```
+  kubectl exec -it nginx-configmap-deployment-588fdcf99-96pst sh
+  env
+  ```
   
   ## Other command 
    
