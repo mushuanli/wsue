@@ -254,6 +254,76 @@ kubectl get nodes
   ---
     # Normal command
   ---
+    ## Pod and deployment commands
+    
+  ### create or update resource
+  ```
+  kubectl apply -f pod.yaml
+  ```
+  
+  ### get pods:
+  ```
+  kubectl get pods
+  ```
+  
+  ### scale replicate set
+  ```
+  kubectl scale replicaset my-rs --replicas=10
+  ```
+  
+  ### delete pod:
+  ```
+  kubectl delete pod my-rs-2fncm
+  ```
+  
+  ### get deployment:
+  ```
+  kubectl get deployment
+  ```
+  
+  ### get replicaset
+  ```
+  kubectl get rs
+  ```
+  
+  ### describe deployment:
+  ```
+  kubectl describe deployment 
+  ```
+  
+  ### rollout update image
+  ```
+  kubectl set image deployment.v1.apps/nginx-deployment nginx=nginx:1.15.4 --record
+  ```
+  
+  check rollout update status:
+  ```
+  kubectl rollout status deployment.v1.apps/nginx-deployment
+  ```
+  
+  verify finally status:
+  ```
+  kubectl get deployment
+  ```
+  
+  check finally image version:
+  ```
+   kubectl describe deployment | grep Image
+  ```
+  
+  rollback deployment:
+  ```
+  kubectl rollout undo deployment.v1.apps/nginx-deployment
+  ```
+  
+  scale deployment:
+  ```
+  kubectl scale deployment.v1.apps/nginx-deployment --replicas=9
+  ```
+  
+  ## Other command 
+   
+  
   get secret info:
   ```
   kubectl get secret secret-xdr-backend-ti-ddb
