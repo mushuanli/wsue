@@ -386,6 +386,15 @@ kubectl get nodes
   kubectl get secret secret-xdr-backend-ti-ddb
   ```
   
+  get storage
+  ```
+  kubectl get storageclass
+  ```
+  
+  ```
+  kubectl get statefulset
+  ```
+  
   ---
     # Debug command
   ---
