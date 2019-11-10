@@ -261,7 +261,63 @@ kubectl get nodes
     
   ---
   
-  ## 7.1 Pod and deployment commands
+  ## 7.1 kubectl introduce
+  
+  kubectl — pronounced “cube control” — is the command line tool for K8s. Here’s how it works:
+  * A kubectl command performs an action such as get, create, or describe.
+  * The action is performed on a resource such as a Deployment, StatefulSet, or Service.
+  * kubectl commands follow this format:
+  ```
+kubectl an_action a_resource a_resource_name --flags
+  ```
+  Names and flags are optional in many cases.
+  
+    Top 11 kubectl Resources:
+  * pods, po
+  * nodes, no
+  * deployments, deploy
+  * replicasets, rs
+  * daemonsets, ds
+  * statefulsets, sts
+  * jobs
+  * cronjobs, cj
+  * services, svc
+  * persistentvolumes, pv
+  * persistentvolumeclaims, pvc
+
+  Unsurprisingly, **all**  is used to refer to all existing resources. **kubectl get all** shows essential information about running Pods, Services, Deployments, and ReplicaSets. This command is super handy. 😄
+Likewise, **kubectl get events** shows a history of events. It’s like a log at the K8s level instead of at the container level.
+
+  Top 7 kubectl Actions：
+  * help — get help
+  ```
+  kubectl get pods --help
+  ```
+  * get — display information about a resource or resources
+  ```
+  kubectl get all [--watch]
+  ```
+  * describe — display detailed information about a resource or resources
+  ```
+  kubectl describe all
+  ```
+  * logs — show the logs for a container
+  ```
+  kubectl logs hello-node-7f5b6bd6b8-gr7m7 [-c my-container] [--previous]
+  ```
+  * exec— enter a running process in a container
+  ```
+  kubectl exec -it my_pod bash
+  ```
+  * apply —create or alter a resource, **apply** is your SwissArmy knife for creating and updating resources.
+  * delete — delete a resource or resources
+  ```
+  kubectl delete pod my_pod
+  kubectl delete rs --all
+  ```
+  
+  
+  ## 7.2 Pod and deployment commands
     
   ### create or update resource
   ```
@@ -328,7 +384,7 @@ kubectl get nodes
   kubectl scale deployment.v1.apps/nginx-deployment --replicas=9
   ```
   
-  ## 7.2 Service
+  ## 7.3 Service
   
   ### Service type
   ClusterIP: export service by cluster internal IP
@@ -350,7 +406,7 @@ kubectl get nodes
   ```
   
   
-  ## 7.3 Ingress
+  ## 7.4 Ingress
   Kubernetes Ingress exposes HTTP and HTTPS routes from outside the cluster to Services within the cluster. Traffic routing is controlled by rules defined on the ingress resource.
   When use Ingress, when the service start, it will auto register to Ingress. else need to create a reverse proxy to service.
   
@@ -370,7 +426,7 @@ kubectl get nodes
  kubectl describe ing ingress
 ```
   
-  ## 7.4 configmap and secret
+  ## 7.5 configmap and secret
   
   Can login pod to view env, and ls to view mount secrets :
   ```
@@ -378,7 +434,7 @@ kubectl get nodes
   env
   ```
   
-  ## Other command 
+  ## 7.6 Other command 
    
   
   get secret info:
