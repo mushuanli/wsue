@@ -644,57 +644,115 @@ data:
   ## deploy script(deploy.sh)
   save as deploy.sh, auto deploy service
   ```
-  #!/bin/bash
+#!/bin/bash
 
-if [[ "$1" == "setup" ]] ; then
-    ONLY_SETUP="TRUE"
-    shift
-fi
-
-if [[ "$1" == "init" ]] ; then
-    ONLY_INITCONFIG="TRUE"
-    shift
-fi
-
-if [[ "$1" == "deploy" ]] ; then
-    ONLY_DEPLOY="TRUE"
-    shift
-fi
-
-if [[ "$1" == "uninstall" ]] ; then
-    ONLY_UNINSTALL="TRUE"
-    shift
-fi
-
-if [[ "$1" == "stat" ]] ; then
-    ONLY_STAT="TRUE"
-    shift
-fi
-
+declare -A prefixlist=" setup ls uninstall stat "
+declare -A envlist=" int dev stg prod "
 
 RUNNING_ENV=$1
-IMAGE_VERSION=$2
+PREFIX_PARAM=
+IMAGE_VERSION=
 
+if ! [[ $envlist =~ (^|[[:space:]])"$1"($|[[:space:]]) ]] ; then
+    echo "not input env, env must be: $envlist"
+    exit 1
+fi
+shift
+
+if [[ $prefixlist =~ (^|[[:space:]])"$1"($|[[:space:]]) ]] ; then
+    PREFIX_PARAM=$1
+    shift
+    echo "prefix param: $PREFIX_PARAM"
+fi
+
+if [[ ! -z "$1" ]]; then
+    rx="^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+    if [[ $1 =~ $rx ]]; then
+        IMAGE_VERSION=$1
+    else
+        echo "$1 not a valid docker image version!"
+        help 
+        exit 1
+    fi
+fi
+
+
+
+# ------------------------------------------------  APP configure START -----------------------------
+#
 NODE_ENV=dev
 ECR_SERVER=10.206.138.106:5000
-ECR_IMAGE_NAME='rain-test'
+ECR_IMAGE_NAME='backend-rain'
+ECR_USERNAME=root
+ECR_PASSWORD=root
+ECR_EMAIL='rain@rainaws.com'                                     #can be anything
+ECR_REBUILD="TRUE"
 
 EKS_SECRET_ECR="secret-ecr-$ECR_IMAGE_NAME"
 EKS_SECRET_JWT="secret-jwt-$ECR_IMAGE_NAME"
 EKS_SECRET_YAML='regcred-aws-dev.yaml'
-EKS_DEPLOY_YAML='rain-test-settings.yaml'
+EKS_DEPLOY_YAML='app-settings.yaml'
 
 AWS_REGION='us-west-2'
 AWS_DBPREFIX=dev
 
-KEYS_RAIN_V1='rain_v1.pub.pem'
-KEYS_RAIN_V2='rain_v2.pub.pem'
+KEYS_RAIN1='rain1.pub.pem'
+KEYS_RANI2='rain2.pub.pem'
 
+# ------------------------------------------------  APP configure END -----------------------------
+#
 
+# ------------------------------------------------  function -----------------------------
+#
 function help() {
-    echo "param: [setup|init|deploy|uninstall|stat] env(dev|stg|prod) image_version"
+    echo "param:  env(dev|stg|prod) [setup|ls|uninstall|stat] image_version"
     echo "    env: dev|stg|prod|int"
     echo "    image_version: such as 1.0.1001"
+    echo "prefix param:"
+    echo "    setup:  setup kubernetes and aws env"
+    echo "    ls:     ls ECR avaliable versions"
+    echo "    uninstall: uninstall versions and resource created by deploy.sh"
+    echo "    stat:   get deploy status"
+}
+
+function execprefix(){
+    case $PREFIX_PARAM in
+        setup)
+            setup
+            echo 'setup success finish'
+            exit 0
+            ;;
+
+        uninstall)
+# ------------------------------------------------  APP uninstall START -----------------------------
+            kubectl ${EKS_PARAMS} delete -f $EKS_DEPLOY_YAML
+            kubectl ${EKS_PARAMS} delete -f $EKS_SECRET_YAML
+            kubectl ${EKS_PARAMS} delete secret $EKS_SECRET_ECR
+            kubectl ${EKS_PARAMS} delete secret $EKS_SECRET_JWT
+            echo 'uninstall finish'
+            exit 0
+# ------------------------------------------------  APP uninstall END -----------------------------
+            ;;
+
+        stat)
+            kubectl ${EKS_PARAMS} get secret
+            kubectl ${EKS_PARAMS} get svc
+            kubectl ${EKS_PARAMS} get ingress
+            kubectl ${EKS_PARAMS} get pods
+            exit 0
+            ;;
+
+        ls)
+            echo "Repo $ECR_PATH$ECR_IMAGE_NAME avaliable image is:"
+            aws ecr describe-images --repository-name "$ECR_PATH$ECR_IMAGE_NAME" \
+                |egrep -vw "\<(imageDetails|registryId|repositoryName|imageDigest|imageTags)\>" |  egrep -v '{|]' \
+                | tr '\n' ' ' | sed 's/},/}/g' |sed 's/}/\n/g'
+            exit 0
+            ;;
+
+        *)
+            ;;
+    esac
 }
 
 function setup(){
@@ -765,12 +823,12 @@ EOF
     aws configure
     
     read -p 'EKS Region ("us-east-1"): ' eks_region
-    read -p 'EKS namespace("rain-ekspace"): ' eks_name
+    read -p 'EKS namespace("rain-eks-env"): ' eks_name
     if [[ -z "$eks_region" ]] ; then
         eks_region="us-east-1"
     fi
     if [[ -z "$eks_name" ]] ; then
-        eks_name="rain-ekspace"
+        eks_name="rain-eks-env"
     fi
 
     echo "EKS Info: $eks_name on $eks_region, ECR Region: $ECR_REGION"
@@ -779,10 +837,25 @@ EOF
     aws ecr create-repository --repository-name $ECR_PATH$ECR_IMAGE_NAME || true
 }
 
-function rebuildimage(){
-    local localimage=$1
-    local ecrimage=$2
+function prepareimage(){
+    local localimage="$ECR_IMAGE_NAME:$IMAGE_VERSION"
+    local ecrimage="$ECR_FULL_IMAGEPATH"
 
+    if [[ -z "$ECR_REBUILD" ]] ; then
+        local reponame="$ECR_PATH$ECR_IMAGE_NAME"
+        local versioninfo="$IMAGE_VERSION"
+        echo "aws ecr describe-images --repository-name $reponame --image-ids imageTag=$versioninfo 1>/dev/null "
+        aws ecr describe-images --repository-name $reponame --image-ids imageTag=$versioninfo 1>/dev/null 
+        if [[ $? -eq 0 ]] ; then
+            echo "Docker image $ecrimage OK"
+            return 0
+        fi
+
+        echo "Docker image $ecrimage not found, need to deploy to dev first"
+        exit 1
+    fi
+
+    echo "*** build $ECR_IMAGE_NAME:$IMAGE_VERSION and push to $ECR_SERVER ***"
 
     oldimages=$(docker images --format "{{.ID}}: {{.Repository}}:{{.Tag}}" | grep -w "$localimage" | awk -F: '{print $1}' | sort | uniq)
     if [ ! -z "$oldimages" ] ; then
@@ -790,7 +863,10 @@ function rebuildimage(){
         docker rmi -f $oldimages
     fi
 
+# ------------------------------------------------  APP docker image configure START -----------------------------
     rm -f app.tar.gz ; cd .. && tar czf $OLDPWD/app.tar.gz *.js package.json web.config && cd -
+# ------------------------------------------------  APP docker image configure END -----------------------------    
+
     docker build -f Dockerfile . -t $localimage
     rm -f app.tar.gz
     echo "will tag and push $localimage to $ecrimage, make sure has rum:"
@@ -808,26 +884,24 @@ function updateconfig() {
     local ecrenv=$3
     local ecrimg=$4
 
-    sed -r -i -e 's#(\s+region:\s+)(.*)#\1'"$(echo -n $AWS_REGION|base64 -w0)"'#g'          $EKS_SECRET_YAML
-    sed -r -i -e 's#(\s+dbname_prefix:\s+)(.*)#\1'"$(echo -n $AWS_DBPREFIX|base64 -w0)"'#g' $EKS_SECRET_YAML
+    sed -r -i -e 's#(\s+region:\s*)(.*)#\1'"$(echo -n $AWS_REGION|base64 -w0)"'#g'          $EKS_SECRET_YAML
+    sed -r -i -e 's#(\s+dbname_prefix:\s*)(.*)#\1'"$(echo -n $AWS_DBPREFIX|base64 -w0)"'#g' $EKS_SECRET_YAML
     if [[ ! -z "$kubename" ]] ; then
-        sed -r -i -e 's#(\s+kubename:\s+)(.*)#\1'"${kubename}"'#g' $EKS_DEPLOY_YAML
+        sed -r -i -e 's#(\s+namespace:\s*)(.*)#\1'"${kubename}"'#g' $EKS_DEPLOY_YAML
     fi
-    sed -r -i -e 's#(\s+image:\s+)(.*)#\1'"${ecrimg}"'#g'     $EKS_DEPLOY_YAML
-    sed -r -i -e 's#(\s+image:\s+)(.*)#\1'"${ecrimg}"'#g'     $EKS_DEPLOY_YAML
+    sed -r -i -e 's#(\s+image:\s*)(.*)#\1'"${ecrimg}"'#g'     $EKS_DEPLOY_YAML
+    sed -r -i -e 's#(\s+image:\s*)(.*)#\1'"${ecrimg}"'#g'     $EKS_DEPLOY_YAML
     sed -rie '/-\s+name:\s+NODE_ENV/{n;s#(\s+value:\s+)(.*)#\1'"${ecrenv}"'#;}' $EKS_DEPLOY_YAML
 
     sed -ie 's|\(.*"version"\): "\(.*\)".*|\1: '"\"$version\",|" ../package.json
 }
 
 
-if [[ "$RUNNING_ENV" != "int" ]] ; then
-    if [[ ! -n "${RUNNING_ENV}" ]] ;then
-        echo "not input env"
-        help 
-        exit 1
-    fi
+# ------------------------------------------------  init status -----------------------------
+#
 
+if [[ "$RUNNING_ENV" != "int" ]] ; then
+# ------------------------------------------------  APP env configure START -----------------------------
     case ${RUNNING_ENV} in
         dev)
             ;;
@@ -836,6 +910,7 @@ if [[ "$RUNNING_ENV" != "int" ]] ; then
             NODE_ENV=stage
             AWS_REGION='us-east-1'
             AWS_DBPREFIX=staging
+            ECR_REBUILD=
             ;;
 
         prod)
@@ -843,8 +918,9 @@ if [[ "$RUNNING_ENV" != "int" ]] ; then
             AWS_REGION='us-east-1'
             AWS_DBPREFIX=prod
             EKS_SECRET_YAML='regcred-aws-prod.yaml'
-            KEYS_RAIN_V1='rain_v1.pub.pem.prod'
-            KEYS_RAIN_V2='rain_v1.pub.pem.prod'
+            KEYS_RAIN1='rain1.pub.pem.prod'
+            KEYS_RAIN2='rain2.pub.pem.prod'
+            ECR_REBUILD=
             ;;
 
         *)
@@ -852,51 +928,34 @@ if [[ "$RUNNING_ENV" != "int" ]] ; then
             exit 1
             ;;
     esac
+# ------------------------------------------------  APP env configure END -----------------------------
 
-    ECR_SERVER=$(aws ecr get-login --region us-east-1 --no-include-email | awk '{print $7}' | sed 's#^https://##')
-    ECR_PATH='rain-namespace/'
     ECR_REGION='us-east-1'
+    ECR_SERVER=$(aws ecr get-login --region us-east-1 --no-include-email | awk '{print $7}' | sed 's#^https://##')
+    ECR_USERNAME=AWS
+    ECR_PASSWORD=`aws ecr --region=${ECR_REGION} get-authorization-token --output text --query authorizationData[].authorizationToken | base64 -d | cut -d: -f2`
+    ECR_PATH='ecr-rain/'
 
-    EKS_NAMESPACE='rain-ekrspace'
+    EKS_NAMESPACE='rain-eksn'
     EKS_PARAMS="-n $EKS_NAMESPACE"
 fi
 
 
-if [[ ! -z "$ONLY_SETUP" ]] ; then
-    setup
-    echo 'setup success finish'
-    exit 0
-fi
+# ------------------------------------------------  exec prefix operator -----------------------------
+#
+execprefix
+# ------------------------------------------------  APP EXEC deploy version -----------------------------
+#
 
-if [[ ! -z "$ONLY_UNINSTALL" ]] ; then
-    kubectl ${EKS_PARAMS} delete -f $EKS_DEPLOY_YAML
-    kubectl ${EKS_PARAMS} delete -f $EKS_SECRET_YAML
-    kubectl ${EKS_PARAMS} delete secret $EKS_SECRET_ECR
-    kubectl ${EKS_PARAMS} delete secret $EKS_SECRET_JWT
-    echo 'uninstall finish'
-    exit 0
-fi
-
-if [[ ! -z "$ONLY_STAT" ]] ; then
-    kubectl ${EKS_PARAMS} get secret
-    kubectl ${EKS_PARAMS} get svc
-    kubectl ${EKS_PARAMS} get ingress
-    kubectl ${EKS_PARAMS} get pods
-    exit 0
-fi
-
-
-rx="^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
-if ! [[ $IMAGE_VERSION =~ $rx ]]; then
-    echo "$IMAGE_VERSION not a valid docker image version!"
+if [[ -z "$IMAGE_VERSION" ]] ; then
+    echo "command need version info"
     help 
     exit 1
 fi
 
+
 echo "    image version: "${IMAGE_VERSION}
 echo "    env:           "${RUNNING_ENV}
-
-
 
 
 ECR_FULL_IMAGEPATH="$ECR_SERVER/$ECR_PATH$ECR_IMAGE_NAME:$IMAGE_VERSION"
@@ -906,8 +965,7 @@ set -e
 if [[ -z "$ONLY_DEPLOY" ]] ; then
     updateconfig "$IMAGE_VERSION" "$EKS_NAMESPACE" "${NODE_ENV}" "${ECR_FULL_IMAGEPATH}"
 
-    echo "*** build $ECR_IMAGE_NAME:$IMAGE_VERSION and push to $ECR_SERVER ***"
-    rebuildimage "$ECR_IMAGE_NAME:$IMAGE_VERSION" "$ECR_FULL_IMAGEPATH"
+    prepareimage
     if [[ ! -z "$ONLY_INITCONFIG" ]] ; then
         echo "Init config success, next command: "
         echo "    ./deploy.sh deploy $IMAGE_VERSION $RUNNING_ENV"
@@ -918,33 +976,19 @@ fi
 
 
 echo "*** create secrets ***"
-
-
-
-if [[ ! -z "$ECR_REGION" ]] ; then
-    # create ecr secret start
-    EMAIL='test@rain.com'                                     #can be anything
-    TOKEN=`aws ecr --region=${ECR_REGION} get-authorization-token --output text --query authorizationData[].authorizationToken | base64 -d | cut -d: -f2`
-    kubectl ${EKS_PARAMS} create secret docker-registry ${EKS_SECRET_ECR} \
-        --docker-server=https://$ECR_SERVER \
-        --docker-username=AWS \
-        --docker-password="${TOKEN}" \
-        --docker-email="${EMAIL}" --dry-run -o yaml | kubectl apply -f -
-else
-    #   LOCAL test server
-    kubectl ${EKS_PARAMS} create secret docker-registry ${EKS_SECRET_ECR} \
-        --docker-server=https://$ECR_SERVER \
-        --docker-username=root \
-        --docker-password=root \
-        --docker-email="${EMAIL}" --dry-run -o yaml | kubectl apply -f -
-fi
+echo "create ${EKS_SECRET_ECR}"
+kubectl ${EKS_PARAMS} create secret docker-registry ${EKS_SECRET_ECR} \
+    --docker-server=https://$ECR_SERVER \
+    --docker-username="$ECR_USERNAME" \
+    --docker-password="$ECR_PASSWORD" \
+    --docker-email="${ECR_EMAIL}" --dry-run -o yaml | kubectl apply -f -
 
 echo "create $EKS_SECRET_YAML"
 kubectl ${EKS_PARAMS} apply -f $EKS_SECRET_YAML
 echo "create $EKS_SECRET_JWT"
 kubectl ${EKS_PARAMS} create secret generic $EKS_SECRET_JWT \
-    --from-file=${KEYS_RAIN_V1}=../keys/$KEYS_RAIN_V1 \
-    --from-file=${KEYS_RAIN_V2}=../keys/$KEYS_RAIN_V2 \
+    --from-file=${KEYS_RAIN1}=../keys/$KEYS_RAIN1 \
+    --from-file=${KEYS_RAIN2}=../keys/$KEYS_RAIN2 \
      --dry-run -o yaml | kubectl apply -f -
 
 echo "*** create deployment and service ***"
