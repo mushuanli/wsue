@@ -243,7 +243,13 @@ kubectl get nodes
   # 5. Install addons
   
   ---
-  
+  K8S Dashboard
+Kube DNS
+Registry
+Storage class to a folder on localhost
+Ingress (MicroK8s does not have a Load Balancer, but the ingress addon can be used to publish on the external IP if necessary)
+RBAC
+efk stack (Elasticsearch, Fluentd ans Kibana) for aggregated logs
   
   ---
   
