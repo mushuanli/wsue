@@ -32,3 +32,18 @@ sudo  /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resour
 sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
 -deactivate -configure -access -off
 ```
+
+# 3. install homebrew vim and change PS1
+
+```
+$ cat ~/.bashrc 
+export PS1='\033[1;;93;44mMBP:\033[0m\033[01;34m\w\[\033[00m\]\$ '
+```
+
+```
+ /usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+ brew install macvim
+```
+
+
+
