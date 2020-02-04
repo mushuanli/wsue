@@ -45,5 +45,15 @@ export PS1='\033[1;;93;44mMBP:\033[0m\033[01;34m\w\[\033[00m\]\$ '
  brew install macvim
 ```
 
+# other
+## mount linux NFS server
+linux: /etc/exports
+```
+/local/directory/to/export *(rw,sync,all_squash,anonuid=1000,anongid=1000)
+```
 
+mac:
+```
+sudo mount -t nfs -o resvport serveraddress:/exported/directory/on/server ~/Shares/mountname
 
+```
