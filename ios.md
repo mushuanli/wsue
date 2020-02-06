@@ -57,3 +57,11 @@ mac:
 sudo mount -t nfs -o resvport serveraddress:/exported/directory/on/server ~/Shares/mountname
 
 ```
+
+## update bash
+```
+brew install bash
+// Next we need to add our bash to shells:
+
+sudo bash -c "echo $(brew --prefix)/bin/bash >> /private/etc/shells"
+```
