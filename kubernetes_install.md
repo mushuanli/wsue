@@ -1012,3 +1012,14 @@ exit 0
 
 
   ```
+
+
+## install elasticsearch
+run in all nodes:
+```
+echo 'vm.max_map_count=262144' >> /etc/sysctl.conf && sysctl -p
+
+# install script:
+root@k8s:~/efk/cluster/addons/fluentd-elasticsearch# git remote -v
+origin	https://github.com/kubernetes/kubernetes.git (fetch)
+```
