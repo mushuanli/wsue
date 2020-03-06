@@ -10,3 +10,15 @@ declare -A RBCMD=([scan]="(${RBCMD_scan[*]@Q})" ... )
         declare -a item=$cmd
 ```        
  --------------------
+function param reference
+```
+function curl_get() {
+    local -n inner_output=$1
+    inner_output=('a' 'b')
+}
+
+    local retvals
+    curl_get retvals '/hello'
+    echo "HELLO: ${retvals[0]}      ${retvals[1]}"
+```
+----------------------
