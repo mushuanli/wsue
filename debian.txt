@@ -295,7 +295,13 @@ network={
  1. gen office hash value:
     download https://github.com/stricture/hashstack-server-plugin-hashcat/blob/master/scrapers/office2hashcat.py or https://github.com/magnumripper/JohnTheRipper/blob/bleeding-jumbo/run/office2john.py
      python office2john.py dummy.docx  | sed 's/^.*://' | tee hash.txt
- 2. find password with rules:
+ 
+ 2. run hashcat in docker:
+    hashcat is dependcy with OS, so run in docker is a good idea.
+    docker pull dizcza/docker-hashcat:intel-cpu
+    docker run -it -e TZ=Asia/Shanghai  -v /home/build/rain/:/n dizcza/docker-hashcat:intel-cpu  /bin/bash
+    
+ 2. In hashcat container, find password with rules:
  rules ref: https://blog.51cto.com/simeon/2084325
  hashcat -m 9600 hash.txt -a 3 --force --increment --increment-min 1 --increment-max 8 ?d?d?d?d?d?d?d?d
  
