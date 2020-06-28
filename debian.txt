@@ -253,6 +253,13 @@ apt-get remove xrdp vnc4server tightvncserver
  apt-get install tightvncserver
  apt-get install xrdp
  service xrdp restart
+adduser xrdp ssl-cert  
+
+touch /var/log/xrdp.log
+chown xrdp:adm /var/log/xrdp.log
+chmod 640 /var/log/xrdp.log
+systemctl start xrdp
+systemctl status xrdp
 
 --------------------------------------- WIFI -------------------------------------------------
 安装：
