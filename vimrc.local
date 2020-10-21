@@ -8,8 +8,8 @@
 "      curl -fLo ~/.local/share/nvim/site/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
 "      mkdir -p ~/.config/nvim && vi ~/.config/nvim/init.vim
 
-"set langmenu=en_US
-"let $LANG = 'en_US'
+set langmenu=en_US
+let $LANG = 'en_US'
 "source $VIMRUNTIME/delmenu.vim
 "source $VIMRUNTIME/menu.vim
 
@@ -33,7 +33,6 @@ filetype plugin on
 call plug#begin('~/.vim/plugged')
 "# 这里写上需要安装的插键
 Plug 'vim-airline/vim-airline'
-Plug 'scrooloose/nerdtree'
 Plug 'junegunn/fzf', { 'dir': '~/.fzf', 'do': './install --all' }
 Plug 'junegunn/fzf.vim'
 
@@ -66,7 +65,7 @@ set background=dark
 "let g:solarized_termcolors=256
 
 if s:is_gui
-    au GUIEnter * simalt ~x     " Start maximized
+    "au GUIEnter * simalt ~x     " Start maximized
     set guioptions-=T           " No toolbar
     set guioptions-=m           " No menus
     set guioptions-=L           " No left scrollbar
@@ -134,15 +133,6 @@ augroup vimrc_todo
 augroup END
 hi def link MyTodo Todo
 hi Todo term=reverse ctermbg=52 guibg=Cyan
-
-"   NERDTree
-let g:NERDTreeShowHidden = 1
-let g:NERDTreeMinimalUI = 1
-let g:NERDTreeGitStatusWithFlags = 1
-let g:NERDTreeIgnore = ['^node_modules$','.vscode$','\.git','\.nyc_output','\.o$','\.gz$','\~$']
-let g:NERDTreeStatusline = ''
-" Automaticaly close nvim if NERDTree is only thing left open
-autocmd bufenter * if (winnr("$") == 1 && exists("b:NERDTree") && b:NERDTree.isTabTree()) | q | endif
 
 " FZF
 let g:fzf_action = {
