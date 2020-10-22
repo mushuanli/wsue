@@ -1,29 +1,24 @@
-" All:    mkdir 
-"Windows:  right click to open[HKEY_CURRENT_USER\SOFTWARE\Classes\*\shell\Open with Neovim\command]
-"          C:\tools\neovim\Neovim\bin\nvim-qt.exe "%1""
-"      curl -fLo ~/.vim/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
-"      edit %userprofile%\AppData\Local\nvim\init.vim
-" Mac:
-"      brew install neovim
-"      curl -fLo ~/.local/share/nvim/site/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
-"      mkdir -p ~/.config/nvim && vi ~/.config/nvim/init.vim
+set nocompatible               " Be iMproved
 
 set langmenu=en_US
 let $LANG = 'en_US'
-"source $VIMRUNTIME/delmenu.vim
-"source $VIMRUNTIME/menu.vim
 
 let s:is_windows = (has("win32") || has("win64"))
 let s:is_gui = has("gui_running")
 
-if &compatible
-  set nocompatible               " Be iMproved
+if s:is_gui
+    "au GUIEnter * simalt ~x     " Start maximized
+    set guioptions-=T           " No toolbar
+    set guioptions-=m           " No menus
+    set guioptions-=L           " No left scrollbar
+    set guioptions-=r           " No right scrollbar
 endif
 
-if s:is_windows
-  source $VIMRUNTIME/mswin.vim
-  behave mswin
-endif
+
+"if s:is_windows
+"  source $VIMRUNTIME/mswin.vim
+"  behave mswin
+"endif
 behave xterm
 filetype plugin on
 
@@ -31,13 +26,12 @@ filetype plugin on
 " PACKAGE SETTINGS
 "
 call plug#begin('~/.vim/plugged')
-"# 这里写上需要安装的插键
-Plug 'vim-airline/vim-airline'
+"Plug 'vim-airline/vim-airline'
 Plug 'junegunn/fzf', { 'dir': '~/.fzf', 'do': './install --all' }
 Plug 'junegunn/fzf.vim'
 
-Plug 'jiangmiao/auto-pairs'
-Plug 'junegunn/vim-easy-align'
+"Plug 'jiangmiao/auto-pairs'
+"Plug 'junegunn/vim-easy-align',  {'for': 'ruby'}
 Plug 'morhetz/gruvbox'
 
 call plug#end()
@@ -58,24 +52,20 @@ nnoremap <C-p> :GFiles<CR>
 nnoremap <leader>p :Buffers<CR>
 
 "   color
-syntax enable
+"syntax enable
 colorscheme gruvbox
 set background=dark
 
-"let g:solarized_termcolors=256
-
-if s:is_gui
-    "au GUIEnter * simalt ~x     " Start maximized
-    set guioptions-=T           " No toolbar
-    set guioptions-=m           " No menus
-    set guioptions-=L           " No left scrollbar
-    set guioptions-=r           " No right scrollbar
-endif
+set laststatus=2
+set statusline=%m\ %F\ %y\ %{&fileencoding?&fileencoding:&encoding}\ %=%(C:%c\ L:%l\ %P%)
 
 "   edit
+set encoding=utf8
+set ffs=unix,dos,mac
+
 set autoread              " read open files again when changed outside Vim
 set autowrite             " write a modified buffer on each shell
-au CursorHold * checktime                                                                                                                                                                       
+"au CursorHold * checktime                                                                                                                                                                       
 
 set browsedir=current     " which directory to use for the file browser
 
@@ -86,7 +76,8 @@ set number              " line numbers at the side
 set ruler               " show the cursor position all the time
 set splitright          " create vertical splits to the right
 set splitbelow          " create horizontal splits below
-set cursorline
+set lazyredraw
+"set cursorline
 
 set incsearch       " use incremental search
 set ic		    " 查找时忽略大小写
@@ -103,7 +94,6 @@ set foldlevelstart=2
 set foldlevel=100       " Don't autofold anything (but I can still fold manually)
 set foldopen-=search    " don't open folds when you search into them
 set foldopen-=undo      " don't open folds when you undo stuff
-"set foldopen=block,hor,mark,percent,quickfix,search,tag " what movements open folds
 
 "   indent
 set autoindent          " copy indent from the current line when starting a new line
