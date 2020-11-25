@@ -18,6 +18,9 @@ vi /etc/fstab
 
 vi /etc/resolv.conf
 
+copy config file and others.
+cp -a /etc/envirienment /etc/bash.bashrc /etc/tmux.conf /mnt/root/etc
+cp -a /root/.profile /root/.ssh  /mnt/root/root/
 
 vi /etc/network/interfaces
 ============ add =============================
@@ -29,13 +32,16 @@ iface eth0 inet dhcp
 ===============================================
 vi /etc/envirienment
 
+
 passwd
+#  如果忘记，那么修改 grub菜单，在 linux 后面加上 init=/bin/bash 进入bash，然后 mount -o remount,rw / ; 然后 passwd 修改, 并使用 adduser 增加新用户
+
 vi /boot/grub/grub.cfg
   # add net.ifnames=0 to makesure eth0 exist
         linux   /boot/vmlinuz-4.5.0-2-amd64 root=UUID=8706990a-3eab-4f71-b8e3-2383de8295dd ro net.ifnames=0 quiet
 
 # install other packages 
-apt-get install tmux bash-completion mc vim less ncftp curl  aria2 ssh tig git tcpdump lshw lsof ncdu iftop htop iotop tcpstat dstat sysstat psmisc pwgen rsync file host dnsutils  nmap mtr ccze vlan ethtool iperf schroot gcc make 
+apt-get install tmux bash-completion mc vim less ncftp curl  aria2 ssh tig git tcpdump lshw lsof  iftop htop iotop tcpstat dstat sysstat psmisc rsync file host dnsutils   schroot gcc make 
 
 # fail2ban, mtr, clamav, chrootkit, els
 # local tool: sniff parse_strace2.pl 
@@ -47,7 +53,6 @@ echo '"\e[B": history-search-forward' >> inputrc
 update-alternatives --set editor /usr/bin/vim.basic
 
 copy /etc/vim/vim.local 
- cp /etc/tmux.conf /mnt/USB/etc/
 
 
 
@@ -250,7 +255,7 @@ apt-get install xserver-xorg-core xserver-xorg-input-libinput xserver-xorg-input
 apt-get install xserver-xorg xserver-xorg-input-libinput xserver-xorg-input-evdev
 
 apt-get remove xrdp vnc4server tightvncserver
- apt-get install tightvncserver
+ apt-get install tightvncserver xrdp
  apt-get install xrdp
  service xrdp restart
 adduser xrdp ssl-cert  
