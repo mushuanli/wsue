@@ -21,19 +21,23 @@ vi /etc/resolv.conf
 copy config file and others.
 cp -a /etc/envirienment /etc/bash.bashrc /etc/tmux.conf /mnt/root/etc
 cp -a /root/.profile /root/.ssh  /mnt/root/root/
+copy /etc/vim/vim.local 
 
 vi /etc/network/interfaces
+copy /etc/wpa_supplicant/wpa_supplicant.conf      # wifi
+copy /etc/network/interfaces                      # wifi + eth , NetworkManager not well support Enterprise encrypt
+
 ============ add =============================
 auto lo
 iface lo inet loopback
 
 auto eth0
 iface eth0 inet dhcp
-===============================================
-vi /etc/envirienment
 
+===============================================
 
 passwd
+adduser
 #  如果忘记，那么修改 grub菜单，在 linux 后面加上 init=/bin/bash 进入bash，然后 mount -o remount,rw / ; 然后 passwd 修改, 并使用 adduser 增加新用户
 
 vi /boot/grub/grub.cfg
@@ -52,7 +56,6 @@ echo '"\e[A": history-search-backward' >> inputrc
 echo '"\e[B": history-search-forward' >> inputrc
 update-alternatives --set editor /usr/bin/vim.basic
 
-copy /etc/vim/vim.local 
 
 
 
