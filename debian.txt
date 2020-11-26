@@ -22,6 +22,7 @@ copy config file and others.
 cp -a /etc/envirienment /etc/bash.bashrc /etc/tmux.conf /mnt/root/etc
 cp -a /root/.profile /root/.ssh  /mnt/root/root/
 copy /etc/vim/vim.local 
+copy /etc/sysctl.conf
 
 vi /etc/network/interfaces
 copy /etc/wpa_supplicant/wpa_supplicant.conf      # wifi
@@ -268,6 +269,31 @@ chown xrdp:adm /var/log/xrdp.log
 chmod 640 /var/log/xrdp.log
 systemctl start xrdp
 systemctl status xrdp
+
+problem:
+```
+1. 闪退：进入用户目录
+   touch .xsession
+   echo xfce4-session > .xsession 
+2. 远程使用Terminal时，Tab键无法自动补全 - 使用 ctrl-i, 或是在窗口管理器中keyboard 里将 用到 Super + Tab的快捷键clear掉即可
+3. xrdp_mm_process_login_response: login failed
+   原因：没有正确关闭导致达到连接上限。修改 /etc/xrdp/sesman.ini ,  MaxSessions=50 , KillDisconnected=1 , 然后重启 xrdp
+4. /var/log/xrdp.log : 
+   password failed
+   error - problem connecting
+   a. var/log/xrdp-sesman.log 
+      [ERROR] X server for display 10 startup timeout[INFO ] starting xrdp-sessvc - xpid=2924 - wmpid=2923
+      或
+      [ERROR] another Xserver is already active on display 10
+      那么是 tightvnc 字体冲突， apt purge tightvncserver xrdp; apt install tightvncserver xrdp
+   b. 不是什么情况,修改 /etc/xrdp/sesman.ini
+      param8=-SecurityTypes
+      param9=None
+
+```
+
+      
+
 
 --------------------------------------- WIFI -------------------------------------------------
 安装：
