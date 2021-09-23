@@ -1,0 +1,42 @@
+# ref:
+#   https://kind.sigs.k8s.io/docs/user/quick-start/
+# run deployment in local machine's kubernetes docker, used to debug deploy problem.
+#
+# step:
+#   1.  clean kind env.delete old kind info:
+#  	kind delete clusters kind
+#   2. init new kind env. init kind nodes:
+#       kind create cluster --config k8ssim_kind.yaml
+#   3. set kind as default kubectl context-config. load into kubectl:
+#       kubectl cluster-info --context kind-kind
+#   4. create kubernetes namespace for youself:
+#       kubectl create ns my_namespace 
+#   5. cteate you docker image and push into kind:
+#       kind load  docker-image my_image:1.1.100 my_image:1.1.100
+#	- verify if push succ:
+#		kubectl get nodes
+#		docker exec -ti <nodename> bash
+#		crictl images
+#   7. deploy deployment and service into kind:
+#       kubectl -n my_namespace --apply my_app.yaml
+#   8. finish. now you pod is running OK.
+# three node (two workers) cluster config
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+  kubeadmConfigPatches:
+  - |
+    kind: InitConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        node-labels: "ingress-ready=true"
+  extraPortMappings:
+  - containerPort: 8081
+    hostPort: 8081
+    protocol: TCP
+#  - containerPort: 443
+#    hostPort: 443
+#    protocol: TCP
+- role: worker
+#- role: worker
