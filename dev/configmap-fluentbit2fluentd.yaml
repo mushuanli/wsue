@@ -1,0 +1,80 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  creationTimestamp: null
+  name: configmap-fluent-bit
+  namespace: 
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush           5
+        Daemon          off
+        Log_Level       debug
+        #Parsers_File parsers.conf
+
+    [INPUT]
+        Name        tail
+        Path        /var/log/app_debug.log
+        DB          /tmp/ng.log
+        #Parser      app
+        Tag         ${APP_FLUENT_TAG}
+        Db.sync     Full
+        Buffer_Chunk_Size 320KB
+        Buffer_Max_Size   520KB
+
+    [OUTPUT]
+        Name stdout
+        Match *
+
+    [OUTPUT]
+        Name        forward
+        Match       *
+        Host        ${APP_FLUENT_HOST}
+        Port        ${APP_FLUENT_PORT}
+  parsers.conf: |
+    [PARSER]
+       name                    app
+       format                  json
+       time_key                timestamp
+       time_format             %Y-%m-%dT%H:%M:%S.%L
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  creationTimestamp: null
+  name: configmap-fluentd
+  namespace: 
+data:
+  fluent.conf: |
+    # Receive events from 24224/tcp
+    # This is used by log forwarding and the fluent-cat command
+    <source>
+      @type         forward
+      port          24222
+    </source>
+
+    # 将标记为 myapp.access 的日志转存到文件
+    <match app*>
+      @type         file
+      path          /var/log/${tag}/${tag}
+      append        true
+      <format>
+        @type       single_value
+        message_key log
+      </format>
+      <buffer tag,time>
+        @type         file
+        timekey       1d
+        timekey_wait  10m
+        timekey_use_utc true
+        flush_mode    interval
+        compress      gzip
+        flush_interval 5s
+        total_limit_size  120MB
+      </buffer>
+    </match>
+
+    #<match apptest1>
+    #    @type stdout
+    #</match>
+
