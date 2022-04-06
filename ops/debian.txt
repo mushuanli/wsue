@@ -1,9 +1,10 @@
 debootstrap sid /mnt/root/ http://mirrors.163.com/debian
 
 cd /mnt/root/
-mount --rbind /proc proc
-mount --rbind /sys sys
-mount --rbind /dev dev
+mount -t proc proc/
+mount -t sysfs sys sys/
+mount --rbind /dev dev/
+mount -t tmpfs none tmp/
 
 chroot .
 apt-get update
