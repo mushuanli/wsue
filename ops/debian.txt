@@ -1,16 +1,21 @@
+cert error:
+wget debian-archive-keyring and dpkg -i to install it
+
 debootstrap sid /mnt/root/ http://mirrors.163.com/debian
 
 cd /mnt/root/
+mount -o bind /dev/ c/dev/
+mount -t devpts pts dev/pts/
+mount -t tmpfs none tmp/
 mount -t proc proc/
 mount -t sysfs sys sys/
-mount --rbind /dev dev/
-mount -t tmpfs none tmp/
 
 chroot .
 apt-get update
 dpkg-reconfigure tzdata 
 apt-get install locales ssh linux-image-amd64 grub-pc net-tools bzip2
 dpkg-reconfigure locales 
+
 
 vi /etc/fstab
 ============ add =============================
@@ -45,7 +50,11 @@ adduser
 vi /boot/grub/grub.cfg
   # add net.ifnames=0 to makesure eth0 exist
         linux   /boot/vmlinuz-4.5.0-2-amd64 root=UUID=8706990a-3eab-4f71-b8e3-2383de8295dd ro net.ifnames=0 quiet
+or vi etc/default/grub
+   GRUB_CMDLINE_LINUX_DEFAULT="net.ifnames=0 quiet"
 
+# install other tools (service, debug, tookit,wifi)
+apt install mc wpasupplicant bind9-dnsutils lftp vim vim-runtime vim-common ssh samba wpasupplicant git tmux fzf rg jq tig ripgrep fd-find htop links2 xzip tcpdump ncdu ncat wget gawk sed rsync 
 # install other packages 
 apt-get install tmux bash-completion mc vim less ncftp curl  aria2 ssh tig git tcpdump lshw lsof  iftop htop iotop tcpstat dstat sysstat psmisc rsync file host dnsutils   schroot gcc make 
 
