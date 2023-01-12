@@ -1,14 +1,22 @@
-======================================================================= WIFI problem - WPA2 Enterprise: 
+
+# ================== move docket data dir
 ```
-apt purge wpasupplicant ; dpkg -i  wpasupplicant_2.9.0-21_amd64.deb
-apt-mark hold wpasupplicant
-nmcli connection add   type wifi   connection.id ap2000 ifname wlan0   wifi.ssid AP2000   wifi.mode infrastructure   wifi-sec.key-mgmt wpa-eap   802-1x.eap peap   802-1x.identity rain_li   802-1x.phase2-auth mschapv2   802-1x.password "$1"
-nmcli --ask c up ap2000  
+mkdir -p /etc/systemd/system/docker.service.d
+echo '[Service]
+ExecStart=
+ExecStart=/usr/sbin/dockerd -H fd:// --data-root="/opt/docker"
+' > /etc/systemd/system/docker.service.d/docker-storage.conf
+sudo systemctl daemon-reload
+sudo systemctl restart docker
 ```
 
-cert error:
+# ================== apt cert error
+```
 wget debian-archive-keyring and dpkg -i to install it
+```
 
+# ================== debootstrap install 
+```
 debootstrap sid /mnt/root/ http://mirrors.163.com/debian
 
 cd /mnt/root/
@@ -75,83 +83,168 @@ echo '"\e[A": history-search-backward' >> inputrc
 echo '"\e[B": history-search-forward' >> inputrc
 update-alternatives --set editor /usr/bin/vim.basic
 
+```
 
 
-
-1. time
+## ================== 1. time 
    当debian与windows共存时就会出现时间不一致情况，为避免此问题，可以设置debian不使用UTC时间，即直接将BIOS时间作为系统时间，执行如下命令并重启系统即可：
 hwclock -w --localtime
 命令修改了/etc/adjtime文件，不建议手动修改此文件。
+```
  dpkg-reconfigure tzdata  或 ztselect
  date -s '20160315 21:59"
  hwclock -w
+```
  
  
- 
- 2. grub
+ ## ================== 2. grub 
+ ```
  sudo fdisk -l
         linux   /boot/vmlinuz-4.5.0-2-amd64 root=UUID=8706990a-3eab-4f71-b8e3-2383de8295dd ro net.ifnames=0 quiet
+```
 
 I have only one disk so that is /dev/sda and I learned that the Linux-formatted partition is /dev/sda4. That is what counts now. Then it is time to mount the necessary things:
 
+```
 sudo mount /dev/sda4 /mnt
 sudo mount --bind /dev /mnt/dev
 sudo mount --bind /proc /mnt/proc
 sudo mount --bind /sys /mnt/sys
+```
 
 Shaun did not mention the fourth line, which is necessary for the GRUB2 to re-find the boot entries. I found it by reading the error message :-) 
 Next let us chroot :
-
+```
 sudo chroot /mnt
+```
 
 From now on sudo is not necessary, I am the Root. Then it is time to reconfigure GRUB2:
-
+```
 update-grub2
-
+```
 The following lines indicate that all the necessary partitions are located by GRUB. The only thing left here is to write the GRUB to the MBR of my disk:
-
+```
 grub-install /dev/sda
-
+```
 That's it. Now leave the chroot environment:
-
+```
 exit
-
+```
 and reboot the system. The GRUB2 wakes up nicely and gives the first option as Debian as desired. If for some reason I wanted to change the boot order to, say, make the W7 be the default, I had to edit the GRUB2 configuration file. Once in chroot and updated GRUB, edit the configuration file with for example Nano:
-
+```
 nano -w /etc/default/grub
+```
 
 The same applies when modifying timeouts, defaults etc.later, too. The changes get written to the MBR by 
-
+```
 grub-install /dev/sda
+```
 
 ---------------------------------------------------------------------------------------------
-apt-get update hash sum mismatch problem:
+# ================== apt-get update hash sum mismatch problem: 
+```
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 apt-get clean
 apt-get update
 apt-get upgrade
+```
 
 ---------------------------------------------------------------------------------------------
-FFMPEG
+# ================== FFMPEG 
 Flip video  vertically:
+```
 ffmpeg -i INPUT -vf vflip -c:a copy OUTPUT
+```
 2. Flip video horizontally:
-
+```
 ffmpeg -i INPUT -vf hflip -c:a copy OUTPUT
+```
 3. Rotate 90 degrees clockwise:
-
+```
 ffmpeg -i INPUT -vf transpose=1 -c:a copy OUTPUT
+```
 4. Rotate 90 degrees counterclockwise:
+```
 ffmpeg -i INPUT -vf transpose=2 -c:a copy OUTPUT
 ffmpeg -ss 5.32 -i input.mp4 -c:v libx264 -c:a libfaac out.mp4
+```
 
 ---------------------------------------------------------------------------------------------
-openssl req -x509 -nodes -newkey rsa:2048 -keyout key.pem -out cert.pem -days  300
+# ================== RSA + SSH
+### without RSA key promote
+```
+			scp -o StrictHostKeyChecking=no -r /root/.ssh sgv:/root/
+```
+
+### gen key for ssh login
+```
+            eval GITRSA='~/.ssh/gitrsa'
+            email=$1
+            if [[ -z "$1" ]] ; then
+                email='lizlok@gmail.com'
+            fi
+            echo "will generate git key: $GITRSA for: $email"
+            rm -f "$GITRSA"
+            ssh-keygen -t rsa -b 4096 -C $email -f "$GITRSA" -q -N ''
+            echo "add $GITRSA to local"
+            eval $(ssh-agent -s)
+            ssh-add "$GITRSA"
+            echo "add pub to github"
+            cat ${GITRSA}.pub
+```
+
+### gen ca for https server
+```
+function genprivca() {
+  #（1）首先我们先生成证书私钥 （生成CA私钥）(无加密)
+  openssl genrsa -out server.key 2048 #   用于生成服务端私钥文件server.key，后面的参数2048单位是bit，是私钥的长度。
+
+  #   （2）根据私钥生成公钥
+  openssl rsa -in server.key -out server.key.public #    openssl生成的私钥中包含了公钥的信息，我们可以根据私钥生成公钥
+
+  #（3）根据私钥生成证书 （生成CA证书）
+  openssl req -new -x509 -key server.key -out server.crt -days 365 # 我们也可以根据私钥直接生成自签发的数字证书
+}
+
+function gensvrkey() {
+  #   （1）生成客户端私钥 （生成CA私钥）
+  openssl genrsa -out ca.key 2048 #  2048为长度
+
+  #   （2）生成CA证书
+  openssl req -x509 -new -nodes -key ca.key -subj "/CN=wsue.com" -days 5000 -out ca.crt
+  #   接下来，生成server端的私钥，生成数字证书请求，并用我们的ca私钥签发server的数字证书：
+
+  #   （1）生成服务端私钥
+  openssl genrsa -out server.key 2048 #   2048为长度
+
+  #   （2）生成证书请求文件
+  openssl req -new -key server.key -subj "/CN=localhost" -out server.csr
+
+  #   （3）根据CA的私钥和上面的证书请求文件生成服务端证书
+  openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt -days 5000
+  #    http.ListenAndServeTLS(":8080", "/home/liuxin/Desktop/server.crt",
+  #        "/home/liuxin/Desktop/server.key", nil)
+  mv  server.crt server.key ../data
+}
+
+
+```
+or
+```
+  openssl genrsa -out key.pem
+  openssl req -new -key key.pem -out csr.pem
+  openssl x509 -req -days 9999 -in csr.pem -signkey key.pem -out cert.pem
+  rm csr.pem
+  #   key: fs.readFileSync('key.pem'),
+  #   cert: fs.readFileSync('cert.pem')
+
+```
+
 
 
 ---------------------------------------------------------------------------------------------
-create USB BOOT and include DEBIAN Live
+# ================== create USB BOOT and include DEBIAN Live 
 1. fdisk to create USB's boot partition, and set as FAT32
    windows only regornize first partition, so we often set as:
     /dev/sdb1   fat32  xxG
@@ -271,7 +364,8 @@ EOF
 now it works, great :)
 
 
-====================================== XRDP =======================================
+# ================== XRDP 
+```
 apt-get install xserver-xorg-core xserver-xorg-input-libinput xserver-xorg-input-evdev
 apt-get install xserver-xorg-core xserver-xorg-input-libinput xserver-xorg-input-evdev
 apt-get install xserver-xorg xserver-xorg-input-libinput xserver-xorg-input-evdev
@@ -287,6 +381,7 @@ chown xrdp:adm /var/log/xrdp.log
 chmod 640 /var/log/xrdp.log
 systemctl start xrdp
 systemctl status xrdp
+```
 
 problem:
 ```
@@ -313,7 +408,7 @@ problem:
       
 
 
---------------------------------------- WIFI -------------------------------------------------
+# ================== WIFI 
 安装：
 firmware-iwlwifi  (需要打开no-free)  wireless-tools wpasupplicant (支持 wap 认证)
 intel 驱动如果不成功，需要另外下载：
@@ -325,12 +420,15 @@ wget https://wireless.wiki.kernel.org/_media/en/users/drivers/iwlwifi-8265-ucode
 再重加载 iwlwifi 模块
 
 启动(/etc/network/interfaces 添加下面行)：
+```
 auto wlan0
 iface wlan0 inet dhcp
 pre-up wpa_supplicant -B -i wlan0 -c /etc/wpa_supplicant/wpa_supplicant.conf
 post-down killall -q wpa_supplicant
+```
 
 同时 /etc/wpa_supplicant/wpa_supplicant.conf 添加下面行：
+```
 ctrl_interface=/var/run/wpa_supplicant
 network={
   ssid="Trend-BYOD"
@@ -346,21 +444,33 @@ network={
   phase2="MSCHAPV2"
   }
 
-
+```
 然后使用 ifup wlan0 启动
 
+#================== WIFI problem - WPA2 Enterprise: 
+```
+apt purge wpasupplicant ; dpkg -i  wpasupplicant_2.9.0-21_amd64.deb
+apt-mark hold wpasupplicant
+nmcli connection add   type wifi   connection.id ap2000 ifname wlan0   wifi.ssid AP2000   wifi.mode infrastructure   wifi-sec.key-mgmt wpa-eap   802-1x.eap peap   802-1x.identity rain_li   802-1x.phase2-auth mschapv2   802-1x.password "$1"
+nmcli --ask c up ap2000  
+```
 
-============ hashcat restore office password =============================
+# ================== hashcat restore office password 
  1. gen office hash value:
     download https://github.com/stricture/hashstack-server-plugin-hashcat/blob/master/scrapers/office2hashcat.py or https://github.com/magnumripper/JohnTheRipper/blob/bleeding-jumbo/run/office2john.py
+    ```
      python office2john.py dummy.docx  | sed 's/^.*://' | tee hash.txt
+     ```
  
  2. run hashcat in docker:
     hashcat is dependcy with OS, so run in docker is a good idea.
+    ```
     docker pull dizcza/docker-hashcat:intel-cpu
     docker run -it -e TZ=Asia/Shanghai  -v /home/build/rain/:/n dizcza/docker-hashcat:intel-cpu  /bin/bash
+    ```
     
  2. In hashcat container, find password with rules:
  rules ref: https://blog.51cto.com/simeon/2084325
+ ```
  hashcat -m 9600 hash.txt -a 3 --force --increment --increment-min 1 --increment-max 8 ?d?d?d?d?d?d?d?d
- 
+ ```
