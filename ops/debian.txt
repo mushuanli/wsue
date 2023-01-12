@@ -1,3 +1,9 @@
+WIFI problem - WPA2 Enterprise:
+apt purge wpasupplicant ; dpkg -i  wpasupplicant_2.9.0-21_amd64.deb
+apt-mark hold wpasupplicant
+nmcli connection add   type wifi   connection.id ap2000 ifname wlan0   wifi.ssid AP2000   wifi.mode infrastructure   wifi-sec.key-mgmt wpa-eap   802-1x.eap peap   802-1x.identity rain_li   802-1x.phase2-auth mschapv2   802-1x.password "$1"
+nmcli --ask c up ap2000  
+
 cert error:
 wget debian-archive-keyring and dpkg -i to install it
 
