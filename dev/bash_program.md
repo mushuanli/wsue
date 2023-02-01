@@ -1,5 +1,10 @@
+* debug
+```
+set -x -u -e
+```
+---
 
-hash of array:
+* define and use hash of array:
 ```
 declare -a RBCMD_scan=("scan"	    "scan"                      "endpoint"	"\"computer_id\": \"$DEF_COMPUTER_ID\",\"_string\": \"$DEF_STRING\"")
 
@@ -10,7 +15,8 @@ declare -A RBCMD=([scan]="(${RBCMD_scan[*]@Q})" ... )
         declare -a item=$cmd
 ```        
  --------------------
-function param reference
+ 
+* return function result by param - function param reference
 ```
 function curl_get() {
     local -n inner_output=$1
