@@ -540,8 +540,12 @@ function cmd_postinstall_k8s()
 {
   
   $LOG_INFO "increase containerd restart speed"
-  sed -ie 's/KillMode=.*/KillMode=mixed/g' /etc/systemd/system/snap.microk8s.daemon-containerd.service
-  rm -f /etc/systemd/system/snap.microk8s.daemon-containerd.servicee
+  sed -i 's/KillMode=.*/KillMode=mixed/g' /etc/systemd/system/snap.microk8s.daemon-containerd.service
+
+
+  $LOG_INFO "disable nmcli manage k8s network"
+  echo '[keyfile]
+>unmanaged-devices=interface-name:cali*;interface-name:tunl*' >/etc/NetworkManager/conf.d/calico.conf
 
   $LOG_INFO "disable snap auto refresh"
   sudo usermod -a -G microk8s rain
