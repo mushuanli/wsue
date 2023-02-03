@@ -140,11 +140,14 @@ bpftrace -l 'usdt:/usr/lib/x86_64-linux-gnu/libc.so.6:*'
 虽然内核社区已经对 BPF 做了很多的性能调优，跟踪用户态函数（特别是锁争用、内存分配之类的高频函数）还是有可能带来很大的性能开销。因此，我们在使用 uprobe 时，应该尽量避免跟踪高频函数。
 
 ## bpf () 系统调用
+![](./ebpf_api_call.png)
+
 ### bpf () 函数定义
 使用 bpf() 系统调用和 BPF_PROG_LOAD 命令加载程序。该系统调用的原型为：
 ```c
 int bpf(int cmd, union bpf_attr *attr, unsigned int size);
 ```
+![](./bpf_api_param.png)
 
 BPF_PROG_LOAD 加载的命令可以用于创建和修改 eBPF maps，maps 是普通的 key/value 数据结构，用于在 eBPF 程序和内核空间或用户空间之间通信。其他命令允许将 eBPF 程序附加到一个控制组目录或 socket 文件描述符上，迭代所有的 maps 和程序，以及将 eBPF 对象固定到文件，这样在加载 eBPF 程序的进程结束后不会被销毁 (后者由 tc 分类器 / 操作代码使用，因此可以将 eBPF 程序持久化，而不需要加载的进程保持活动状态)。完整的命令可以参考 bpf() 帮助文档。 
 
@@ -171,7 +174,7 @@ eBPF 使用的主要的数据结构是 eBPF map，这是一个通用的数据结
 
 
 以下将会列举一下常见的类型：
-```c
+```js
 BPF_MAP_TYPE_HASH : a hash table「哈希表」
 
 BPF_MAP_TYPE_ARRAY : an array map, optimized for fast lookup speeds, often used for counters「数组映射，已针对快速查找速度进行优化，通常用于计数器」
@@ -205,13 +208,15 @@ BPF_MAP_TYPE_SOCKET_MA : stores and looks up sockets and allows socket redirecti
 ```
 
 所有的 map 都可以通过 eBPF 或在用户空间的程序中使用  bpf_map_lookup_elem()  和 bpf_map_update_elem() 函数进行访问。某些 map 类型，如 socket map，会使用其他执行特殊任务的 eBPF 辅助函数。 
-
+```
+bpftool feature probe
+```
 eBPF 的更多细节可以参见官方帮助文档
 
 ### eBPF 辅助函数
 eBPF 程序被触发时，会调用辅助函数。这些特别的函数让 eBPF 能够有访问内存的丰富功能。
 
-可以参考官方帮助文档查看 libbpf 库提供的辅助函数。 
+可以参考官方帮助文档查看 libbpf 库提供的辅助函数。
 
 官方文档给出了现有的 eBPF 辅助函数。更多的实例可以参见内核源码的 samples/bpf/ 和 tools/testing/selftests/bpf/ 目录。
 
@@ -225,6 +230,7 @@ eBPF 无疑彻底改变了网络、负载平衡和安全领域。我很确定很
 
 # ref
 
+ * ebpf 编程 https://www.ebpf.top/what-is-ebpf/content/3.ebpf-programs.html
  * bcc与bpftrace介绍,以及使用kubectl trace跟踪K8S https://feisky.xyz/posts/2021-01-27-ebpf-hello/
  * bpftrace 跟踪例子： https://www.51cto.com/article/700064.html
  * bpftrace 跟踪例子： https://blog.51cto.com/proware/6028057
