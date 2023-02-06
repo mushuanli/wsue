@@ -210,6 +210,7 @@ BPF_MAP_TYPE_SOCKET_MA : stores and looks up sockets and allows socket redirecti
 所有的 map 都可以通过 eBPF 或在用户空间的程序中使用  bpf_map_lookup_elem()  和 bpf_map_update_elem() 函数进行访问。某些 map 类型，如 socket map，会使用其他执行特殊任务的 eBPF 辅助函数。 
 ```
 bpftool feature probe
+bpftool feature probe | grep map_type
 ```
 eBPF 的更多细节可以参见官方帮助文档
 
@@ -227,6 +228,21 @@ eBPF 程序被触发时，会调用辅助函数。这些特别的函数让 eBPF 
  * Katran 是一个开源的 eBPF 项目，用于构建高性能的第 4 层负载均衡转发平面。Katran 于 2018 年 5 月由 Facebook 开源。
 
 eBPF 无疑彻底改变了网络、负载平衡和安全领域。我很确定很多人都在关注这项技术，并将能够用它做更多的事情。
+
+# 项目
+## 持续性能分析
+* Parca — 具有强大的 Prometheus 根基，基于 eBPF，适用于单节点和 Kubernetes 环境。基于 Prometheus 标签和服务发现概念，易于设置和使用。https://www.parca.dev/
+* Pixie — 基于 eBPF 的一体式 o11y 解决方案，除其他外，提供分析。功能强大，可以编写自己的 eBPF 程序，专注于 Kubernetes。https://px.dev/
+* Pyroscope — 具有广泛的语言支持（Java、Ruby、Python、.NET 等）、eBPF 集成和高级可视化。 https://pyroscope.io/
+
+## 监控
+* Tetragon 的基石是一个强大的可观测层，它可以观测整个系统，从低级别的内核可见性到跟踪文件访问、网络活动或能力（capability）变化，一直到应用层，涵盖了诸如对易受攻击的共享库的函数调用、跟踪进程执行或解析发出的 HTTP 请求。总的来说，Tetragon 可以提供对各种内核子系统的可观测性，涵盖了命名空间逃逸、Capabilities 和特权升级、文件系统和数据访问、HTTP、DNS、TLS 和 TCP 等协议的网络活动，以及系统调用层的事件，以审计系统调用和跟踪进程执行。 https://icloudnative.io/posts/tetragon/
+
+
+
+# TODO
+* K8S项目引入Cilium 发现的问题, https://blog.deckhouse.io/cilium-support-in-deckhouse-kubernetes-342fcf3da56
+* ebpf引入服务网格的考虑（优点），https://medium.com/geekculture/istio-ebpf-and-rsocket-broker-a-deep-dive-into-service-mesh-7ec4871d50bb
 
 # ref
 
