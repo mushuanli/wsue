@@ -226,6 +226,7 @@ eBPF 程序被触发时，会调用辅助函数。这些特别的函数让 eBPF 
  * Falco 是一种行为分析工具，可以检测应用程序中的异常情况。
  * Teleport  证书颁发机构和基础架构的访问平面。它允许用户在一个地方设置单点登录并访问 SSH 服务器、K8s 和 Web 应用程序。Teleport 的重要功能之一是共享交互式会话。Teleport 4.2 版本开始使用一些 eBPF 程序来捕获 SSH 会话并将它们转换为事件流。
  * Katran 是一个开源的 eBPF 项目，用于构建高性能的第 4 层负载均衡转发平面。Katran 于 2018 年 5 月由 Facebook 开源。
+ * Pixie 性能监控工具，使用 eBPF 定期中断 CPU。在此过程中，eBPF 探针会检查当前正在运行的程序并收集堆栈跟踪以记录程序在何处执行。
 
 eBPF 无疑彻底改变了网络、负载平衡和安全领域。我很确定很多人都在关注这项技术，并将能够用它做更多的事情。
 
@@ -237,6 +238,7 @@ eBPF 无疑彻底改变了网络、负载平衡和安全领域。我很确定很
 
 ## 监控
 * Tetragon 的基石是一个强大的可观测层，它可以观测整个系统，从低级别的内核可见性到跟踪文件访问、网络活动或能力（capability）变化，一直到应用层，涵盖了诸如对易受攻击的共享库的函数调用、跟踪进程执行或解析发出的 HTTP 请求。总的来说，Tetragon 可以提供对各种内核子系统的可观测性，涵盖了命名空间逃逸、Capabilities 和特权升级、文件系统和数据访问、HTTP、DNS、TLS 和 TCP 等协议的网络活动，以及系统调用层的事件，以审计系统调用和跟踪进程执行。 https://icloudnative.io/posts/tetragon/
+* Levo是一种专门构建的、开发人员优先的 API 安全解决方案，可在 CI/CD 管道中完全自动化 API 可观察性、API 文档和 API 测试 https://towardsdev.com/auto-openapi-generation-the-network-doesnt-lie-5ca6625a9b5c
 
 
 
