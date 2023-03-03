@@ -239,7 +239,7 @@ eBPF 无疑彻底改变了网络、负载平衡和安全领域。我很确定很
 ## 监控
 * Tetragon 的基石是一个强大的可观测层，它可以观测整个系统，从低级别的内核可见性到跟踪文件访问、网络活动或能力（capability）变化，一直到应用层，涵盖了诸如对易受攻击的共享库的函数调用、跟踪进程执行或解析发出的 HTTP 请求。总的来说，Tetragon 可以提供对各种内核子系统的可观测性，涵盖了命名空间逃逸、Capabilities 和特权升级、文件系统和数据访问、HTTP、DNS、TLS 和 TCP 等协议的网络活动，以及系统调用层的事件，以审计系统调用和跟踪进程执行。 https://icloudnative.io/posts/tetragon/
 * Levo是一种专门构建的、开发人员优先的 API 安全解决方案，可在 CI/CD 管道中完全自动化 API 可观察性、API 文档和 API 测试 https://towardsdev.com/auto-openapi-generation-the-network-doesnt-lie-5ca6625a9b5c
-
+* tracee 使用ebpf进行安全检测： https://www.cnblogs.com/janeysj/p/16254048.html
 
 
 # TODO
