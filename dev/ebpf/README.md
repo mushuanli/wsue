@@ -1,6 +1,7 @@
 # eBPF编程
 
 - [eBPF编程](#ebpf编程)
+- [TLDR](#tldr)
 - [1 Linux跟踪机制介绍](#1-linux跟踪机制介绍)
   - [1.1 数据采集方法（Data Sources）](#11-数据采集方法data-sources)
   - [1.2 数据的加工与传递手段（Mechanisms for Collection your Delicious Data），](#12-数据的加工与传递手段mechanisms-for-collection-your-delicious-data)
@@ -68,6 +69,12 @@
     - [cpudist.c](#cpudistc)
 - [REF](#ref)
 
+# TLDR
+eBPF是Linux Kernel引入的新功能，它提供另一种高效编程机制(提供一种动态语言，并且在kernel执行前先用JIT编译成本地语言)，可以在内核和用户态运行动态指令，避免了以前kernel编程时跟kernel版本和CPU体系架构绑定的缺点，大大提高了程序的可移植性。这高效编程可以用于制作探针，或是处理网络封包，而eBPF还在继续发展中。
+使用eBPF技术可以应用在很多场景中:  
+- 网络封包处理：XDP、TC、socket progs、kcm、calico、cilium等, 在现代数据中心和云原生环境中提供高性能的网络和负载平衡
+- 内核跟踪和性能监控：KProbes、UProbes、TracePoints
+- 安全领域：Secomp、landlock、tracee等。例如阻止部分类型的系统调用。
 
 # 1 Linux跟踪机制介绍
 Linux跟踪机制可以分成：
