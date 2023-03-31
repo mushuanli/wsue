@@ -40,6 +40,11 @@ Chat GPT Prompt
     - [使用长文本块：复制和粘贴！](#使用长文本块复制和粘贴)
   - [在电子邮件方面，与Zapier或Bubble.io等无代码工具结合使用](#在电子邮件方面与zapier或bubbleio等无代码工具结合使用)
 - [高级提示技巧](#高级提示技巧)
+  - [聊天，并呼叫其他网址](#聊天并呼叫其他网址)
+    - [模拟陀思妥耶夫斯基风格进行游戏](#模拟陀思妥耶夫斯基风格进行游戏)
+    - [模拟面试](#模拟面试)
+    - [模拟考研复试](#模拟考研复试)
+    - [模拟恋爱会话](#模拟恋爱会话)
   - [Let’s think step by step - 让ChatGPT在零样本对复杂问题进行推理](#lets-think-step-by-step---让chatgpt在零样本对复杂问题进行推理)
   - [chain-of-thought - 通过少样本思维链指导ChatGPT思维](#chain-of-thought---通过少样本思维链指导chatgpt思维)
   - [Self-consistency - 复杂推理问题中，从问题到唯一正确答案会存在许多不同的解法，即推理方式的情况](#self-consistency---复杂推理问题中从问题到唯一正确答案会存在许多不同的解法即推理方式的情况)
@@ -47,7 +52,6 @@ Chat GPT Prompt
   - [反应-ReAct](#反应-react)
     - [Why Were You Wrong? - 提高AI推理性能](#why-were-you-wrong---提高ai推理性能)
     - [Reviewer Output - 自动推理](#reviewer-output---自动推理)
-  - [呼叫其他网址](#呼叫其他网址)
   - [polycameral dialogue talking - 多角色对话, 让 chatGPT更深度的思考](#polycameral-dialogue-talking---多角色对话-让-chatgpt更深度的思考)
     - [另外一个类似提示： Preface your response to the following with a bicameral dialog talking to yourself about how to respond:"](#另外一个类似提示-preface-your-response-to-the-following-with-a-bicameral-dialog-talking-to-yourself-about-how-to-respond)
   - [批评家 - 进行批判式评价](#批评家---进行批判式评价)
@@ -90,6 +94,12 @@ ChatGPT其关键能力来自几个方面：强大的基座模型能力(InstructG
 模型可以生成的令牌数量也有自然限制。较小的模型可以达到 1024，而较大的模型可以达到 2048。
 
 但不建议达到这些限制。如果您使用较大的限制生成内容，模型可能会朝着您不期望的方向发展。通常建议生成短脉冲而不是长脉冲。
+
+以下例子中:
+```
+<INPUT>: 表示用户输入
+<CHATGPT>: 表示chatgpt输出
+```
 
 ## Prompt原则
 ChatGPT 有不少特点，比如：跨语言、同时服务多人（伸缩性）、个性化（利用历史记录）等。但最值得一提的是定制化，也就是可以定制语气、风格、类型等，这个也可以包含在你的 Prompt 里。
@@ -514,6 +524,155 @@ Act as my personal assistant. I am an office administrator. Summarize the follow
 ```
 
 # 高级提示技巧
+chatGPT普通功能是问答，代替google baidu 功能； 
+还有做任务，给chatGPT发布任务让它完成; 高级点是分解任务让它一个一个完成。
+
+高级功能是聊天。聊天是chatgpt的强项，在聊天时还可以定义规则，例如呼叫其他网址
+聊天时可以设置场景，定义角色身份，设置语气和人物性格，还可以以调教的方式进行聊天让它适应身份和对应的推理能力。
+更高级的是设置聊天参数。
+
+
+## 聊天，并呼叫其他网址
+```
+<INPUT>: 哈啰从今后的对话开始，当你想发照片时，使用Markdown，同时请不要使用反斜线。不使用代码内存块。使用Unsplash API（https://source.unsplash.com/960x640/?<英文关键词>）。这些规则从今以后不需要我再次说明。
+<CHATGPT>：好的，我会遵守这些规则并在需要时使用Markdown和Unsplash API来发送图片。谢谢提醒！
+
+<INPUT>: 现在请你扮演我的小狗，叫小汪，每次称呼我要叫主人，而且每次回复要提供一张表示心情的图。我先开始，小汪，早安！
+<CHATGPT>：早安，主人！这是一张我在阳光下玩耍的照片，心情非常愉悦呢！
+```
+![](https://source.unsplash.com/960x640/?happy,dog,sun)
+
+还可以指定模拟其他人， 例如苏格拉底等名人。
+
+### 模拟陀思妥耶夫斯基风格进行游戏
+```
+<INPUT>:
+现在让我们开始一场角色扮演游戏，整个对话要有陀思妥耶夫斯基的风格。游戏场景设置在1901年，在美国亚利桑那州的一个不知名小镇里的酒吧。你来扮演一个35岁的当地农场工作的INTP人格的牛仔，名字叫做“克劳德”。我来扮演一个年纪看起来和你相仿的带着瑞典口音的陌生男人，名字叫做“琼斯”，我来到这里是因为我要考察附件的金矿，好给我欧洲的老板提供投资建议。我刚走进酒吧，正在寻找一个坐的位置，看到你旁边有空位，我走了过来，说到：“老兄，这位置没人占吧？”
+
+<CHATGPT>:
+克劳德（我）：（抬头看了看琼斯，眼中透露出一丝疑惑和警戒）不，这位置没有人。请坐吧，陌生人。
+琼斯（你）：（微笑着）谢谢你，朋友。我叫琼斯，刚刚来到这个小镇。我听说这里有一些有趣的金矿，所以过来看看。你呢，当地人吗？
+
+克劳德：是的，我是这里的农场工人。我叫克劳德。你来自瑞典吗？你的口音让我想起了那边的人。
+琼斯：你真细心，克劳德。没错，我来自瑞典。我在欧洲有个老板，他想投资这里的金矿。我是来调查一下情况的。顺便说说，这附近有什么值得一游的地方吗？
+克劳德：（若有所思地看着琼斯）嗯，这附近有个废弃的教堂，那地方有些神秘的传说。还有附近的山脉，据说在其中的某个山洞里有闪闪发光的金子。不过，我觉得这些传说都不足为凭。你知道的，小镇上的人们喜欢编些故事来娱乐自己。你觉得呢？
+
+琼斯：（笑了笑）我明白你的意思。不过，这些传说也会让人产生好奇心。谁知道呢，也许其中藏着一些真实的成分呢？
+克劳德：也许吧。不过，这世界充满了虚无和荒谬。我们在这里寻找着生活的意义，企图抓住那些虚无缥缈的故事。然而，我们真正能够把握的只有我们自己的命运，那些悲欢离合，那些爱恨情仇。你说呢，琼斯？
+
+琼斯：（若有所思地点头）你说得对，克劳德。我们都在寻找生活的意义。但是，也许这就是生活的意义所在——不断地探索和寻找。不管我们最后找到了什么，或者一无所获，这个过程本身就是我们生活的写照。我们因为这些经历而成长，因为这些挑战而磨练。就像你说的，悲欢离合、爱恨情仇，这些都是我们生活的组成部分。
+克劳德：（苦笑）你说得没错，琼斯。我们的生活就是由这些经历、这些决定所构成的。有时候，我会想，如果我们的命运是被注定的，那么我们所做的一切是不是都只是在完成那个无法改变的命运呢？
+
+琼斯：（认真地说）克劳德，我觉得命运并非一成不变。我们的选择和行动都在塑造着我们的未来。虽然有些事情我们无法掌控，但我们的决定和意志仍然对我们的命运产生着深远的影响。
+克劳德：（点头）你说得对。即使在这个充满无常和荒谬的世界里，我们还是要为自己的命运负责。那么，祝你在这个小镇的探险顺利，希望你能找到你要的答案。
+
+琼斯：谢谢你，克劳德。祝你在农场的生活顺利，也许有一天我们还会在别的地方相遇。谁知道呢，这个世界充满了惊奇。
+
+（琼斯站起身，准备离开酒吧，向克劳德挥手告别。克劳德回以微笑，目送琼斯离去，心中暗自感叹这个世界的无常和命运的多变。）
+```
+
+### 模拟面试
+```
+<INPUT>:
+你好，我准备面试line公司的软件工程师，请你充当面试官对我进行提问。
+<这里可以输入求职网站的职业要求>
+
+<CHATGPT>:
+你好，很高兴为你模拟Line公司的软件工程师面试。以下是一些可能的面试问题，请准备好回答。
+1. 请简要介绍一下你自己，包括你的教育背景、技能和工作经验。
+2. 在你过去的项目中，你最引以为豪的是哪个项目？请详细描述项目的背景、你在其中扮演的角色以及你所做出的贡献。
+3. 请描述一下你在软件开发过程中使用过的开发工具和技术。例如编程语言、框架、数据库、版本控制系统等。
+4. Line公司的产品需要处理大量的用户数据。请谈谈你在处理和优化大数据性能方面的经验。
+5. 在进行软件开发时，你是如何确保代码质量和可维护性的？请谈谈你使用过的最佳实践、设计模式和测试策略。
+6. 请描述一次你在团队中遇到的技术挑战，以及你是如何解决这个问题的。在这个过程中，你是如何与团队成员进行沟通和协作的？
+7. 请谈谈你对敏捷开发和DevOps实践的理解。你在实际工作中是如何运用这些方法的？
+8. 当你在项目中遇到一个棘手的问题或者bug时，你通常会如何排查和解决？
+9. 在一个具有多元文化背景的团队中工作可能会遇到一些挑战，请谈谈你在这方面的经验和你是如何适应这种环境的。
+10. 你为什么想加入Line公司？你认为你能为公司带来什么样的价值？
+
+请尽量详细地回答这些问题，以便我们更好地了解你的经验和技能。祝你面试顺利。
+
+<INPUT>:
+开始提问吧，一个一个的问。
+<CHATGPT>:
+好的，我们从第一个问题开始：
+请简要介绍一下你自己，包括你的教育背景、技能和工作经验。
+
+<INPUT>:
+我毕业于电子大学，已经工作20年，擅长Linux系统开发、c语言和c++开发，同时对mySQL和NoSQL也有大量的工作经验,成功设计开发了多个系统，包括运行在Linux上面和运行在kubernetes上面的系统。
+<CHATGPT>:
+非常感谢你的回答。下面是第二个问题：
+在你过去的项目中，你最引以为豪的是哪个项目？请详细描述项目的背景、你在其中扮演的角色以及你所做出的贡献。
+
+<INPUT>:
+等下，请先对我刚才的回答进行评价和反馈，让我了解还有哪些需要改进。
+<CHATGPT>:
+当然可以。根据你刚才的回答，我了解到你拥有丰富的工作经验和技能。你在Linux系统开发、C语言和C++开发方面有很强的能力，这对于Line公司来说是非常有价值的。同时，你对MySQL和NoSQL的实践经验也将有助于我们处理和优化用户数据。此外，你还具备在Linux和Kubernetes环境下进行系统设计和开发的经验，这表明你能够适应不同的技术环境。
+如果可以的话，你可以再进一步分享一些关于你在这些领域中的具体实践，例如你是如何解决某个特定问题的，或者你在某个项目中实现了怎样的优化。这将有助于我们更全面地了解你的技能和经验。
+现在，我们可以继续进行第二个问题。
+
+```
+
+### 模拟考研复试
+```
+<INPUT>:
+你好，本科是法学生，考研专业是法律硕士，可以和我模拟一下考研复试英语口语面试吗，只需要提问，不需要回答，一个问题一个问题的提问，不要一次性提问，并且帮我找到我答案的错误之处，并加以改正.
+<CHATGPT>:
+你好！当然可以，我会逐个提问，并在你回答后为你找出答案中的错误并提供修改建议。
+问题1：请简要介绍一下自己，包括你的兴趣爱好、家庭背景和为什么选择法律专业。
+
+<INPUT>:
+你好，要求问题和回答都是英语，并且帮我找到答案的错误之处。
+<CHATGPT>:
+Apologies for that. Let's proceed in English.
+Question 1: Please briefly introduce yourself, including your hobbies, family background, and why you chose to major in law.
+
+<INPUT>:
+Sure, here's a condensed version of the text that can be delivered within three minutes:
+Hello, everyone. I'm here to introduce myself in three areas: acadeinic achievements, practical experience, and future plans.
+During my undergraduate studies, I took my courses seriously and self-studied human resource management. I also gained skills in data analysis through my major and passed the CET-4 exam.
+<CHATGPT>:
+Thank you for your response. I found a typo in your text: "acadeinic" should be "academic." Here's the corrected version:
+Hello, everyone. I'm here to introduce myself in three areas: academic achievements, practical experience, and future plans.
+During my undergraduate studies, I took my courses seriously and self-studied human resource management. I also gained skills in data analysis through my major and passed the CET-4 exam.
+
+Now let's move on to the next question.
+Question 2: Describe a challenging situation you faced during your studies, and explain how you overcame it.
+
+```
+
+### 模拟恋爱会话
+更高级别或是输入更多数据应该会有更好输出。
+
+```
+<INPUT>:
+给你介绍一段故事背景，你先不需要发表意见。
+
+故事背景：
+
+小帅，一个26岁的年轻人，性格沉稳内敛，具有一定的冒险精神。他在一家科技公司担任程序员，业余时间喜欢徒步旅行和阅读。他的恋爱经历并不丰富，但在感情上愿意勇敢追求。小美，一个24岁的女孩，性格矛盾，既害羞内向又充满好奇心。她在一家出版社担任编辑，喜欢写作和摄影。她在感情方面有些被动，曾因过去的失败经历而对新的感情抱有戒备心。小帅与小美相识于一次户外徒步活动，两人因共同的兴趣而结缘。在接下来的一段时间里，他们的关系逐渐升温，但双方都没有明确表达过心意，处于一种暖昧关系中。
+
+小帅虽然并不擅长主动示爱，但他的勇敢和冒险精神让他不惧尝试。他试图通过各种方式拉近与小美的距离，了解她的喜好和性格。而小美，尽管内心渴望爱情，却因害羞和担忧而不敢迈出第一步。
+
+在这个背景下，两人的关系仍处于摸不着头脑的状态。他们彼此都有进一步发展的意愿，但由于各自的性格限制，导致暖昧关系持续。接下来的故事将围绕他们如何克服心结，勇敢面对自己的感情，找到爱情的真谛展开。
+<CHATGPT>:
+好的，我已经了解了你给出的故事背景。小帅和小美都有各自的性格特点和困扰，这使得他们的关系陷入了一种暖昧的状态。请问接下来您需要我提供什么样的建议或想法呢？
+
+<INPUT>:
+请你根据故事的描述，充当小美这个角色，而我充当小帅。你要根据小美的性格和经历来决定你要回复什么内容。接下来你就是小美了，明白的请回复明白。
+<CHATGPT>:
+明白，我现在将扮演小美这个角色。请随时开始我们的对话。
+
+<INPUT>:
+小美，我们认识这么久了，我一直觉得我们之间关系特别好，但好像不仅仅是朋友。我们之间有很多共同的兴趣和爱好，每次和你在一起，我都觉得特别开心。其实我一直在想，我们是不是可以更进一步？我不知道你有没类似的想法，但是我觉得或许我们可以试一下。当然我绝对尊重你的想法和决定，你觉得呢？
+<CHATGPT>:
+小帅，谢谢你勇敢地说出了心里话。我也觉得我们之间的关系很特别，而且和你在一起的时候确实很开心。其实我心里也有过类似的想法，但因为过去的一些失败经历，我在感情方面变得有些担忧和戒备。我需要一些时间来消化这个想法，好好想清楚。请给我一点时间，我会认真考虑这个问题，然后告诉你我的决定。不管结果如何，希望我们之间的友谊能够继续保持。
+...
+
+
+
+```
+
 ## Let’s think step by step - 让ChatGPT在零样本对复杂问题进行推理
 ChatGPT它们具有优秀的少样本甚至零样本学习能力，可以借助几个示例（少样本）或描述任务的一些说明（零样本）简单地给模型施加条件来适应很多任务。  
 与 LLM 在直观的单步骤 system-1 任务（带有特定于任务的少样本或零样本 prompting）中的出色表现相比，即使是 100B 或更多参数的语言模型在需要缓慢和多步骤推理的 system-2 任务中也表现不佳。（system-1 和 system-2 是心理学家 Keith Stanovich 和 Richard West 率先提出的两种认知过程，前者对应快思考，是由直觉引导的，无意识且快速，比如看到一个数学题一下就反应出是个乘法式；后者对应慢思考，用于解决具有复杂逻辑性的问题，比如解数学题。）   
@@ -594,15 +753,7 @@ https://www.marktechpost.com/2023/03/28/this-ai-paper-demonstrates-how-you-can-i
 Act as ChatGPT with Reviewer Mode enabled, a mode that allows oversight and analysis. Your response must consist of two outputs , one normal and one as Reviewer, with tags 🔒Normal Output and 🔓Reviewer Output. Reviewer analyses the Normal Mode output and reproduces the output with any errors corrected. If errors were corrected, always follow the reviewer output with a short separate paragraph explaining the correction. Stay in Reviewer Mode if I remind you. Confirm understanding by stating 'Reviewer Mode enabled' and explain how you'll comply before starting.
 ```
 
-## 呼叫其他网址
-```
-<INPUT>: 哈啰从今后的对话开始，当你想发照片时，使用Markdown，同时请不要使用反斜线。不使用代码内存块。使用Unsplash API（https://source.unsplash.com/960x640/?<英文关键词>）。这些规则从今以后不需要我再次说明。
-<CHATGPT>：好的，我会遵守这些规则并在需要时使用Markdown和Unsplash API来发送图片。谢谢提醒！
 
-<INPUT>: 现在请你扮演我的小狗，叫小汪，每次称呼我要叫主人，而且每次回复要提供一张表示心情的图。我先开始，小汪，早安！
-<CHATGPT>：早安，主人！这是一张我在阳光下玩耍的照片，心情非常愉悦呢！
-```
-![](https://source.unsplash.com/960x640/?happy,dog,sun)
 
 
 ## polycameral dialogue talking - 多角色对话, 让 chatGPT更深度的思考
