@@ -21,8 +21,8 @@ chroot .
 apt-get update
 dpkg-reconfigure tzdata 
 apt install locales ssh linux-image-amd64 firmware-iwlwifi wireless-tools grub-pc systemd aptitude net-tools bzip2 vim tmux wpasupplicant network-manager openssh-server samba
-apt install jq tig ripgrep fd-find  links2 xzip tcpdump rsync wget sysstat psmisc  bash-completion less aria2 tig
-apt install linux-headers-amd64   git gcc cmake make nodejs
+apt install jq tig ripgrep fd-find  links2 xzip tcpdump rsync wget sysstat psmisc  bash-completion less aria2
+apt install linux-headers-amd64   git git-lfs tig gcc cmake make nodejs
 
 dpkg-reconfigure locales 
 
