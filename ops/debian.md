@@ -8,16 +8,22 @@
 debootstrap sid /mnt/root/ http://mirrors.163.com/debian
 
 cd /mnt/root/
-mount -o bind /dev/ c/dev/
+mount -o bind /dev/ dev/
 mount -t devpts pts dev/pts/
 mount -t tmpfs none tmp/
-mount -t proc proc/
+mount -t proc proc proc/
 mount -t sysfs sys sys/
 
 chroot .
+# edit pkg config file /etc/apt/sources.list, enable contrib non-free non-free-firmware
+>   deb http://deb.debian.org/debian/ stable main contrib non-free non-free-firmware
+
 apt-get update
 dpkg-reconfigure tzdata 
-apt-get install locales ssh linux-image-amd64 grub-pc net-tools bzip2
+apt install locales ssh linux-image-amd64 firmware-iwlwifi wireless-tools grub-pc systemd aptitude net-tools bzip2 vim tmux wpasupplicant network-manager openssh-server samba
+apt install jq tig ripgrep fd-find  links2 xzip tcpdump rsync wget sysstat psmisc  bash-completion less aria2 tig
+apt install linux-headers-amd64   git gcc cmake make nodejs
+
 dpkg-reconfigure locales 
 
 
@@ -30,13 +36,15 @@ vi /etc/resolv.conf
 
 copy config file and others.
 cp -a /etc/envirienment /etc/bash.bashrc /etc/tmux.conf /mnt/root/etc
-cp -a /root/.profile /root/.ssh  /mnt/root/root/
-copy /etc/vim/vim.local 
+cp -a /root/.profile /root/.ssh  /root/.tmux.conf /mnt/root/root/
+copy /etc/vim/vim.local /etc/default/grub ->
 copy /etc/sysctl.conf
 
 vi /etc/network/interfaces
 copy /etc/wpa_supplicant/wpa_supplicant.conf      # wifi
 copy /etc/network/interfaces                      # wifi + eth , NetworkManager not well support Enterprise encrypt
+cp /etc/NetworkManager/NetworkManager.conf /etc/NetworkManager/system-connections/* ->    # NetworkManager
+cp /etc/samba/smb.conf ->
 
 ============ add =============================
 auto lo
@@ -48,7 +56,19 @@ iface eth0 inet dhcp
 ===============================================
 
 passwd
-adduser
+adduser <username>
+systemctl enable sshd
+smbpasswd -a <username>
+smbpasswd -e <username>
+
+# in top os, backup /boot/efi then
+ umount /boot/efi
+ mount /dev/nvme0n1p1 /mnt/tmp/boot/efi
+# in chroot env, continue
+apt install grub-efi-amd64 efibootmgr
+update-grub2
+grub-install /dev/nvme0
+
 #  如果忘记，那么修改 grub菜单，在 linux 后面加上 init=/bin/bash 进入bash，然后 mount -o remount,rw / ; 然后 passwd 修改, 并使用 adduser 增加新用户
 
 vi /boot/grub/grub.cfg
@@ -58,9 +78,9 @@ or vi etc/default/grub
    GRUB_CMDLINE_LINUX_DEFAULT="net.ifnames=0 quiet"
 
 # install other tools (service, debug, tookit,wifi)
-apt install mc wpasupplicant bind9-dnsutils lftp vim vim-runtime vim-common ssh samba wpasupplicant git tmux fzf rg jq tig ripgrep fd-find htop links2 xzip tcpdump ncdu ncat wget gawk sed rsync 
+#apt install mc wpasupplicant bind9-dnsutils lftp vim vim-runtime vim-common ssh samba wpasupplicant git tmux fzf  jq tig ripgrep fd-find  links2 xzip tcpdump ncdu ncat wget gawk sed rsync btop
 # install other packages 
-apt-get install tmux bash-completion mc vim less ncftp curl  aria2 ssh tig git tcpdump lshw lsof  iftop htop iotop tcpstat dstat sysstat psmisc rsync file host dnsutils   schroot gcc make 
+#apt-get install tmux bash-completion mc vim less ncftp curl  aria2 ssh tig git tcpdump lshw lsof  iftop iotop tcpstat dstat sysstat psmisc rsync file host dnsutils   schroot gcc make 
 
 # fail2ban, mtr, clamav, chrootkit, els
 # local tool: sniff parse_strace2.pl 
